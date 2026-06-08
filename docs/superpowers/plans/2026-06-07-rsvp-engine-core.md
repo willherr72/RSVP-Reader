@@ -377,7 +377,7 @@ Run:
 cmake --build build/host
 ./build/host/Debug/rsvp_tests.exe
 ```
-Expected: `[doctest] Status: SUCCESS!`, `test cases: 3 | 3 passed`.
+Expected: `[doctest] Status: SUCCESS!`, `test cases: 4 | 4 passed`.
 
 - [ ] **Step 1.8: Commit**
 
@@ -546,7 +546,7 @@ Run:
 cmake --build build/host
 ./build/host/Debug/rsvp_tests.exe
 ```
-Expected: `[doctest] Status: SUCCESS!`, `test cases: 8 | 8 passed`.
+Expected: `[doctest] Status: SUCCESS!`, `test cases: 9 | 9 passed`.
 
 - [ ] **Step 2.7: Commit**
 
@@ -838,7 +838,7 @@ Run:
 cmake --build build/host
 ./build/host/Debug/rsvp_tests.exe
 ```
-Expected: `[doctest] Status: SUCCESS!`, `test cases: 15 | 15 passed`.
+Expected: `[doctest] Status: SUCCESS!`, `test cases: 16 | 16 passed`.
 
 - [ ] **Step 3.7: Commit**
 
@@ -897,7 +897,7 @@ Run:
 cmake --build build/host
 ./build/host/Debug/rsvp_tests.exe
 ```
-Expected: `[doctest] Status: SUCCESS!`, `test cases: 17 | 17 passed`. If either navigation test fails, fix `nextSentence`/`prevSentence` in `core/src/player.cpp` to satisfy the documented behavior, then re-run.
+Expected: `[doctest] Status: SUCCESS!`, `test cases: 18 | 18 passed`. If either navigation test fails, fix `nextSentence`/`prevSentence` in `core/src/player.cpp` to satisfy the documented behavior, then re-run.
 
 - [ ] **Step 4.3: Commit**
 
