@@ -24,4 +24,10 @@ TEST_CASE("serializeIndex writes magic, version, and the header counts") {
     CHECK(b[off] == 'T'); off += 1;
     CHECK(byteio::getU16(b, off) == 1);       // authorLen
     CHECK(b[off] == 'A'); off += 1;
+
+    // No chapters, so the seek table follows the author field immediately.
+    CHECK(byteio::getU32(b, off) == 2);   // seekCount: 5 words / interval 4 -> entries at words 0 and 4
+    CHECK(byteio::getU32(b, off) == 0);   // entry 0: byte offset 0 in the token stream
+    CHECK(byteio::getU32(b, off) == 24);  // entry 1: The(6)+cat(6)+sat.(7)+It(5) = 24
+    CHECK(b.size() == 77);                // 34 header + 12 seek table + 31 token stream
 }

@@ -21,7 +21,9 @@ struct Chapter {
 // Default words-per-entry for the sparse seek table.
 constexpr std::uint32_t kDefaultSeekInterval = 256;
 
-// Serialize a tokenized document + metadata + chapters into the compiled-index byte format.
+// Serialize a tokenized document + metadata + chapters into the compiled-index byte
+// format. All multi-byte fields are little-endian. seekInterval is the words-per-entry
+// of the sparse seek table (0 -> kDefaultSeekInterval).
 std::vector<std::uint8_t> serializeIndex(const Document& doc, const DocMeta& meta,
                                          const std::vector<Chapter>& chapters,
                                          std::uint32_t seekInterval = kDefaultSeekInterval);
