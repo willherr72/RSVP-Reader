@@ -14,10 +14,12 @@ add_executable(rsvp_tests
     test_player.cpp
     test_tokenize.cpp
     test_byteio.cpp
+    test_index.cpp
     ${CORE_DIR}/src/orp.cpp
     ${CORE_DIR}/src/pacing.cpp
     ${CORE_DIR}/src/player.cpp
     ${CORE_DIR}/src/tokenize.cpp
+    ${CORE_DIR}/src/index.cpp
 )
 target_include_directories(rsvp_tests PRIVATE
     ${CORE_DIR}/include
