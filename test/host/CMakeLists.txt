@@ -15,6 +15,7 @@ add_executable(rsvp_tests
     test_tokenize.cpp
     test_byteio.cpp
     test_index.cpp
+    test_utf8.cpp
     ${CORE_DIR}/src/orp.cpp
     ${CORE_DIR}/src/pacing.cpp
     ${CORE_DIR}/src/player.cpp
