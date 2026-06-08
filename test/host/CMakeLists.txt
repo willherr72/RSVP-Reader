@@ -18,6 +18,7 @@ add_executable(rsvp_tests
     test_utf8.cpp
     test_entity.cpp
     test_htmltext.cpp
+    test_opf.cpp
     ${CORE_DIR}/src/orp.cpp
     ${CORE_DIR}/src/pacing.cpp
     ${CORE_DIR}/src/player.cpp
@@ -25,6 +26,7 @@ add_executable(rsvp_tests
     ${CORE_DIR}/src/index.cpp
     ${CORE_DIR}/src/entity.cpp
     ${CORE_DIR}/src/htmltext.cpp
+    ${CORE_DIR}/src/opf.cpp
 )
 target_include_directories(rsvp_tests PRIVATE
     ${CORE_DIR}/include
