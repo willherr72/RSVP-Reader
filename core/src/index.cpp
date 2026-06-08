@@ -57,8 +57,63 @@ std::vector<std::uint8_t> serializeIndex(const Document& doc, const DocMeta& met
 }
 
 // --- stubs replaced in Tasks 3 and 4 ---
-CompiledIndex CompiledIndex::parse(const std::vector<std::uint8_t>&) { return CompiledIndex{}; }
-Document CompiledIndex::toDocument() const { return Document{}; }
+CompiledIndex CompiledIndex::parse(const std::vector<std::uint8_t>& b) {
+    CompiledIndex idx;
+    std::size_t off = 0;
+    auto need = [&](std::size_t k) { return off + k <= b.size(); };
+
+    if (!need(4) || b[0] != 'R' || b[1] != 'S' || b[2] != 'V' || b[3] != 'I') return idx;
+    off = 4;
+    if (!need(2)) return idx;
+    if (getU16(b, off) != kVersion) return idx;
+    if (!need(2)) return idx; getU16(b, off);                        // flags
+    if (!need(4)) return idx; idx.meta_.sourceSize  = getU32(b, off);
+    if (!need(4)) return idx; idx.meta_.sourceMtime = getU32(b, off);
+    if (!need(4)) return idx; const std::uint32_t wc = getU32(b, off);
+    if (!need(4)) return idx; const std::uint32_t cc = getU32(b, off);
+    if (!need(4)) return idx; idx.seekInterval_ = getU32(b, off);
+    if (idx.seekInterval_ == 0) return idx;
+
+    if (!need(2)) return idx; const std::uint16_t tl = getU16(b, off);
+    if (!need(tl)) return idx; idx.meta_.title.assign(b.begin() + off, b.begin() + off + tl); off += tl;
+    if (!need(2)) return idx; const std::uint16_t al = getU16(b, off);
+    if (!need(al)) return idx; idx.meta_.author.assign(b.begin() + off, b.begin() + off + al); off += al;
+
+    for (std::uint32_t i = 0; i < cc; ++i) {
+        if (!need(4)) return idx; const std::uint32_t wo = getU32(b, off);
+        if (!need(2)) return idx; const std::uint16_t cl = getU16(b, off);
+        if (!need(cl)) return idx; std::string ct(b.begin() + off, b.begin() + off + cl); off += cl;
+        idx.chapters_.push_back(Chapter{wo, ct});
+    }
+
+    if (!need(4)) return idx; const std::uint32_t sc = getU32(b, off);
+    for (std::uint32_t i = 0; i < sc; ++i) {
+        if (!need(4)) return idx;
+        idx.seekOffsets_.push_back(getU32(b, off));
+    }
+
+    idx.tokenStream_.assign(b.begin() + off, b.end());
+    idx.wordCount_ = wc;
+    idx.ok_ = true;
+    return idx;
+}
+
+Document CompiledIndex::toDocument() const {
+    Document d;
+    if (!ok_) return d;
+    std::size_t off = 0;
+    for (std::size_t i = 0; i < wordCount_; ++i) {
+        if (off + 3 > tokenStream_.size()) break;            // flags(1) + len(2)
+        const std::uint8_t flags = tokenStream_[off++];
+        const std::uint16_t len = getU16(tokenStream_, off);
+        if (off + len > tokenStream_.size()) break;
+        std::string w(tokenStream_.begin() + off, tokenStream_.begin() + off + len);
+        off += len;
+        d.tokens.push_back(Token{w, flags});
+    }
+    return d;
+}
+
 Token    CompiledIndex::at(std::size_t) const { return Token{}; }
 bool indexMatchesSource(const std::vector<std::uint8_t>&, std::uint32_t, std::uint32_t) { return false; }
 
