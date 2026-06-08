@@ -68,3 +68,35 @@ TEST_CASE("parse rejects bad magic and truncated buffers") {
     std::vector<std::uint8_t> tooShort = {'R','S','V','I'};
     CHECK_FALSE(CompiledIndex::parse(tooShort).ok());
 }
+
+TEST_CASE("CompiledIndex::at random-accesses via the sparse seek table") {
+    Document d = tokenizePlainText("a b c d e f g h"); // 8 words
+    REQUIRE(d.size() == 8);
+    DocMeta meta;
+    std::vector<std::uint8_t> b = serializeIndex(d, meta, {}, /*seekInterval*/3); // entries at 0,3,6
+    CompiledIndex idx = CompiledIndex::parse(b);
+    REQUIRE(idx.ok());
+
+    CHECK(idx.at(0).text == "a");
+    CHECK(idx.at(2).text == "c");
+    CHECK(idx.at(3).text == "d");   // exactly on a seek entry
+    CHECK(idx.at(5).text == "f");
+    CHECK(idx.at(6).text == "g");   // on a seek entry
+    CHECK(idx.at(7).text == "h");
+    CHECK(idx.at(8).text == "");    // out of range -> empty token
+
+    Document all = idx.toDocument();
+    for (std::size_t i = 0; i < idx.wordCount(); ++i)
+        CHECK(idx.at(i).text == all.tokens[i].text);
+}
+
+TEST_CASE("indexMatchesSource compares the recorded source stats") {
+    Document d = tokenizePlainText("hello world");
+    DocMeta meta; meta.sourceSize = 11; meta.sourceMtime = 42;
+    std::vector<std::uint8_t> b = serializeIndex(d, meta, {});
+    CHECK(indexMatchesSource(b, 11, 42));
+    CHECK_FALSE(indexMatchesSource(b, 12, 42));   // size differs
+    CHECK_FALSE(indexMatchesSource(b, 11, 43));   // mtime differs
+    std::vector<std::uint8_t> bad = {'X','X','X','X'};
+    CHECK_FALSE(indexMatchesSource(bad, 11, 42)); // bad magic
+}

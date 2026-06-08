@@ -114,7 +114,34 @@ Document CompiledIndex::toDocument() const {
     return d;
 }
 
-Token    CompiledIndex::at(std::size_t) const { return Token{}; }
-bool indexMatchesSource(const std::vector<std::uint8_t>&, std::uint32_t, std::uint32_t) { return false; }
+Token CompiledIndex::at(std::size_t wordIndex) const {
+    if (!ok_ || wordIndex >= wordCount_) return Token{};
+    const std::size_t entry = wordIndex / seekInterval_;
+    std::size_t off = (entry < seekOffsets_.size()) ? seekOffsets_[entry] : 0;
+    const std::size_t toSkip = wordIndex - entry * seekInterval_;
+    for (std::size_t s = 0; s < toSkip; ++s) {
+        if (off + 3 > tokenStream_.size()) return Token{};
+        off += 1;                                   // flags byte
+        const std::uint16_t len = getU16(tokenStream_, off);
+        off += len;
+    }
+    if (off + 3 > tokenStream_.size()) return Token{};
+    const std::uint8_t flags = tokenStream_[off++];
+    const std::uint16_t len = getU16(tokenStream_, off);
+    if (off + len > tokenStream_.size()) return Token{};
+    return Token{ std::string(tokenStream_.begin() + off, tokenStream_.begin() + off + len), flags };
+}
+
+bool indexMatchesSource(const std::vector<std::uint8_t>& b,
+                        std::uint32_t sourceSize, std::uint32_t sourceMtime) {
+    if (b.size() < 16) return false;                // magic(4)+ver(2)+flags(2)+size(4)+mtime(4)
+    if (b[0] != 'R' || b[1] != 'S' || b[2] != 'V' || b[3] != 'I') return false;
+    std::size_t off = 4;
+    if (getU16(b, off) != kVersion) return false;   // version
+    getU16(b, off);                                 // flags
+    const std::uint32_t recSize  = getU32(b, off);
+    const std::uint32_t recMtime = getU32(b, off);
+    return recSize == sourceSize && recMtime == sourceMtime;
+}
 
 } // namespace rsvp
