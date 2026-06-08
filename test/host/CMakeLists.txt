@@ -11,8 +11,10 @@ add_executable(rsvp_tests
     test_token.cpp
     test_orp.cpp
     test_pacing.cpp
+    test_player.cpp
     ${CORE_DIR}/src/orp.cpp
     ${CORE_DIR}/src/pacing.cpp
+    ${CORE_DIR}/src/player.cpp
 )
 target_include_directories(rsvp_tests PRIVATE
     ${CORE_DIR}/include
