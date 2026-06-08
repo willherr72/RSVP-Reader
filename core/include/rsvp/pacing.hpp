@@ -7,13 +7,13 @@ struct PacingConfig {
     int    wpm                = 300;   // base words per minute
     double sentenceEndFactor  = 2.0;   // duration multiplier at sentence end
     double paragraphEndFactor = 2.5;   // at paragraph end
-    double chapterStartFactor = 3.0;   // at chapter start
+    double chapterStartFactor = 3.0;   // at chapter start (pause is on the chapter's first token, not the previous chapter's last)
     int    longWordThreshold  = 8;     // chars beyond which the per-char bonus applies
     double longWordPerCharMs  = 0.0;   // ms added per char beyond the threshold
     int    minWordMs          = 60;    // clamp floor
 };
 
-// Base ms per word from WPM (wpm clamped to >= 1).
+// Base ms per word from WPM (wpm clamped to >= 1; integer division truncates toward zero).
 int baseWordMs(int wpm);
 
 // Full display duration for a token given its flags + length.

@@ -7,6 +7,8 @@ TEST_CASE("baseWordMs from WPM") {
     CHECK(baseWordMs(600) == 100);
     CHECK(baseWordMs(100) == 600);
     CHECK(baseWordMs(0)   == 60000); // guarded: wpm clamped to 1
+    CHECK(baseWordMs(301) == 199);   // 60000/301 = 199.33 -> truncates toward zero
+    CHECK(baseWordMs(-1)  == 60000); // negative wpm also clamped to 1
 }
 
 TEST_CASE("wordDurationMs applies flag factors") {
@@ -34,4 +36,13 @@ TEST_CASE("wordDurationMs clamps to the minimum") {
     PacingConfig cfg;
     cfg.wpm = 2000; // base 30 ms
     CHECK(wordDurationMs(Token{"x", FLAG_NONE}, cfg) == 60);
+}
+
+TEST_CASE("wordDurationMs applies the factor to (base + long-word bonus)") {
+    PacingConfig cfg;
+    cfg.longWordPerCharMs = 10.0;   // "extraordinary" (len 13) -> +(13-8)*10 = +50 ms
+    cfg.longWordThreshold = 8;
+    Token t{"extraordinary", FLAG_PARAGRAPH_END};
+    // base 200 + bonus 50 = 250; strongest factor 2.5 -> round(625.0) = 625
+    CHECK(wordDurationMs(t, cfg) == 625);
 }
