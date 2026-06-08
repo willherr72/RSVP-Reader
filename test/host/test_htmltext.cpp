@@ -38,3 +38,15 @@ TEST_CASE("html pipeline: htmlToText feeds tokenizePlainText into a Document") {
     CHECK(d.tokens[5].has(FLAG_SENTENCE_END));
     CHECK_FALSE(d.tokens[5].has(FLAG_PARAGRAPH_END)); // last word
 }
+
+TEST_CASE("htmlToText: comments (even with an interior '>') are removed") {
+    CHECK(htmlToText("<p>A<!-- a > b -->B</p>") == "AB");
+}
+
+TEST_CASE("htmlToText: a stray '<' in prose is kept, not parsed as a tag") {
+    CHECK(htmlToText("<p>5 < 10 is true.</p>") == "5 < 10 is true.");
+}
+
+TEST_CASE("htmlToText: tag names are case-insensitive") {
+    CHECK(htmlToText("<P>Hi.</P><DIV>Yo.</DIV>") == "Hi.\n\nYo.");
+}

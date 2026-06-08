@@ -88,8 +88,17 @@ std::string htmlToText(const std::string& html) {
     while (i < n) {
         const char ch = html[i];
         if (ch == '<') {
+            const char next = (i + 1 < n) ? html[i + 1] : '\0';
+            const bool looksLikeTag = (next >= 'a' && next <= 'z') || (next >= 'A' && next <= 'Z')
+                                    || next == '/' || next == '!' || next == '?';
+            if (!looksLikeTag) { raw.push_back('<'); ++i; continue; } // stray '<' in prose -> literal
+            if (next == '!' && html.compare(i, 4, "<!--") == 0) {     // comment -> skip to -->
+                const std::size_t cend = html.find("-->", i + 4);
+                i = (cend == std::string::npos) ? n : cend + 3;
+                continue;
+            }
             const std::size_t end = html.find('>', i + 1);
-            if (end == std::string::npos) break; // unterminated tag: drop the rest
+            if (end == std::string::npos) { raw.push_back('<'); ++i; continue; } // unterminated -> literal
             const std::string inner = html.substr(i + 1, end - i - 1);
             bool isEnd = false;
             const std::string name = tagName(inner, isEnd);
