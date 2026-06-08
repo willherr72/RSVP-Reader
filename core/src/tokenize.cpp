@@ -27,21 +27,25 @@ Document tokenizePlainText(const std::string& text) {
     Document doc;
     const std::size_t n = text.size();
     std::size_t i = 0;
+    bool pendingParagraphBreak = false;  // a blank line was seen after the last emitted word
     while (i < n) {
-        // Skip whitespace; count newlines to detect blank-line (paragraph) breaks.
-        int newlines = 0;
+        // Skip whitespace; a gap containing >= 2 newlines is a blank line (paragraph break).
+        bool sawNewline = false, blankLine = false;
         while (i < n && isSpace(static_cast<unsigned char>(text[i]))) {
-            if (text[i] == '\n') ++newlines;
+            if (text[i] == '\n') { if (sawNewline) blankLine = true; sawNewline = true; }
             ++i;
         }
-        // A blank line in the gap ends the paragraph of the previous word.
-        if (newlines >= 2 && !doc.tokens.empty())
-            doc.tokens.back().flags |= FLAG_PARAGRAPH_END;
-        if (i >= n) break;
+        if (blankLine && !doc.tokens.empty()) pendingParagraphBreak = true;
+        if (i >= n) break;   // trailing whitespace at EOF: a pending break has no next word -> dropped
         // Read one word (maximal run of non-whitespace).
         const std::size_t start = i;
         while (i < n && !isSpace(static_cast<unsigned char>(text[i]))) ++i;
         std::string word = text.substr(start, i - start);
+        // A blank line preceded this word -> the previous word ended its paragraph.
+        if (pendingParagraphBreak && !doc.tokens.empty()) {
+            doc.tokens.back().flags |= FLAG_PARAGRAPH_END;
+            pendingParagraphBreak = false;
+        }
         std::uint8_t flags = FLAG_NONE;
         if (endsSentence(word)) flags |= FLAG_SENTENCE_END;
         doc.tokens.push_back(Token{word, flags});

@@ -45,3 +45,32 @@ TEST_CASE("tokenize: a single newline is not a paragraph break") {
     REQUIRE(d.size() == 4);
     CHECK_FALSE(d.tokens[1].has(FLAG_PARAGRAPH_END)); // "one"
 }
+
+TEST_CASE("tokenize: trailing blank line at EOF does NOT set paragraph end") {
+    Document d = tokenizePlainText("Hello.\n\n");
+    REQUIRE(d.size() == 1);
+    CHECK(d.tokens[0].has(FLAG_SENTENCE_END));
+    CHECK_FALSE(d.tokens[0].has(FLAG_PARAGRAPH_END)); // no paragraph follows
+}
+
+TEST_CASE("tokenize: leading blank lines do not flag the first word") {
+    Document d = tokenizePlainText("\n\nFirst word");
+    REQUIRE(d.size() == 2);
+    CHECK(d.tokens[0].text == "First");
+    CHECK_FALSE(d.tokens[0].has(FLAG_PARAGRAPH_END));
+    CHECK_FALSE(d.tokens[1].has(FLAG_PARAGRAPH_END));
+}
+
+TEST_CASE("tokenize: CRLF blank line is a paragraph break") {
+    Document d = tokenizePlainText("para1\r\n\r\npara2");
+    REQUIRE(d.size() == 2);
+    CHECK(d.tokens[0].has(FLAG_PARAGRAPH_END));
+    CHECK_FALSE(d.tokens[1].has(FLAG_PARAGRAPH_END));
+}
+
+TEST_CASE("tokenize: an all-closer token is not a sentence end") {
+    Document d = tokenizePlainText(")");
+    REQUIRE(d.size() == 1);
+    CHECK(d.tokens[0].text == ")");
+    CHECK_FALSE(d.tokens[0].has(FLAG_SENTENCE_END));
+}
