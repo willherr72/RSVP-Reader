@@ -22,6 +22,7 @@ add_executable(rsvp_tests
     test_opf.cpp
     test_miniz.cpp
     test_zipreader.cpp
+    test_epub.cpp
     ${CORE_DIR}/src/orp.cpp
     ${CORE_DIR}/src/pacing.cpp
     ${CORE_DIR}/src/player.cpp
@@ -31,6 +32,7 @@ add_executable(rsvp_tests
     ${CORE_DIR}/src/htmltext.cpp
     ${CORE_DIR}/src/opf.cpp
     ${CORE_DIR}/src/zipreader.cpp
+    ${CORE_DIR}/src/epub.cpp
     ${MINIZ_DIR}/miniz.c
 )
 target_include_directories(rsvp_tests PRIVATE
