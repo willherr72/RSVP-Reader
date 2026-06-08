@@ -13,6 +13,7 @@ add_executable(rsvp_tests
     test_pacing.cpp
     test_player.cpp
     test_tokenize.cpp
+    test_byteio.cpp
     ${CORE_DIR}/src/orp.cpp
     ${CORE_DIR}/src/pacing.cpp
     ${CORE_DIR}/src/player.cpp
