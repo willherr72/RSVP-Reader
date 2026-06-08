@@ -1,10 +1,11 @@
 cmake_minimum_required(VERSION 3.16)
-project(rsvp_core_tests CXX)
+project(rsvp_core_tests C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CORE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../core)
+set(MINIZ_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/miniz)
 
 add_executable(rsvp_tests
     test_main.cpp
@@ -19,6 +20,7 @@ add_executable(rsvp_tests
     test_entity.cpp
     test_htmltext.cpp
     test_opf.cpp
+    test_miniz.cpp
     ${CORE_DIR}/src/orp.cpp
     ${CORE_DIR}/src/pacing.cpp
     ${CORE_DIR}/src/player.cpp
@@ -27,9 +29,11 @@ add_executable(rsvp_tests
     ${CORE_DIR}/src/entity.cpp
     ${CORE_DIR}/src/htmltext.cpp
     ${CORE_DIR}/src/opf.cpp
+    ${MINIZ_DIR}/miniz.c
 )
 target_include_directories(rsvp_tests PRIVATE
     ${CORE_DIR}/include
+    ${MINIZ_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
