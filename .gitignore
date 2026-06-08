@@ -13,3 +13,10 @@ Thumbs.db
 *.exe
 *.pdb
 *.ilk
+
+# ESP-IDF firmware build artifacts (keep sdkconfig.defaults + idf_component.yml; ignore generated)
+firmware/build/
+firmware/managed_components/
+firmware/sdkconfig
+firmware/sdkconfig.old
+firmware/dependencies.lock
