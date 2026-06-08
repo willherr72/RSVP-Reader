@@ -9,6 +9,8 @@ set(CORE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../core)
 add_executable(rsvp_tests
     test_main.cpp
     test_token.cpp
+    test_orp.cpp
+    ${CORE_DIR}/src/orp.cpp
 )
 target_include_directories(rsvp_tests PRIVATE
     ${CORE_DIR}/include
