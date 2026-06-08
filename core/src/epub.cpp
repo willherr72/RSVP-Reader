@@ -1,4 +1,11 @@
 #include "rsvp/epub.hpp"
+#include "rsvp/zipreader.hpp"
+#include "rsvp/opf.hpp"
+#include "rsvp/htmltext.hpp"
+#include "rsvp/tokenize.hpp"
+#include "rsvp/index.hpp"
+#include <string>
+#include <vector>
 
 namespace rsvp {
 
@@ -28,9 +35,35 @@ std::string resolveHref(const std::string& opfPath, const std::string& href) {
     return out;
 }
 
-// --- stub replaced in Task 2 ---
-std::vector<std::uint8_t> epubToIndex(const std::vector<std::uint8_t>&, std::uint32_t, std::uint32_t) {
-    return {};
+std::vector<std::uint8_t> epubToIndex(const std::vector<std::uint8_t>& epub,
+                                      std::uint32_t sourceSize, std::uint32_t sourceMtime) {
+    std::string container;
+    if (!readZipEntry(epub, "META-INF/container.xml", container)) return {};
+    const std::string opfPath = parseContainerOpfPath(container);
+    if (opfPath.empty()) return {};
+    std::string opfXml;
+    if (!readZipEntry(epub, opfPath, opfXml)) return {};
+    const OpfData opf = parseOpf(opfXml);
+
+    Document doc;
+    std::vector<Chapter> chapters;
+    for (const std::string& href : opf.spineHrefs) {
+        std::string xhtml;
+        if (!readZipEntry(epub, resolveHref(opfPath, href), xhtml)) continue;
+        Document part = tokenizePlainText(htmlToText(xhtml));
+        if (part.tokens.empty()) continue;
+        if (!doc.tokens.empty()) part.tokens.front().flags |= FLAG_CHAPTER_START;
+        chapters.push_back(Chapter{static_cast<std::uint32_t>(doc.tokens.size()), std::string()});
+        for (Token& t : part.tokens) doc.tokens.push_back(std::move(t));
+    }
+    if (doc.tokens.empty()) return {};
+
+    DocMeta meta;
+    meta.title       = opf.title;
+    meta.author      = opf.author;
+    meta.sourceSize  = sourceSize;
+    meta.sourceMtime = sourceMtime;
+    return serializeIndex(doc, meta, chapters);
 }
 
 } // namespace rsvp
