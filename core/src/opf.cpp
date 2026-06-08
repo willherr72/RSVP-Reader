@@ -31,7 +31,13 @@ std::string attrValue(const std::string& s, const std::string& name) {
 }
 
 // --- stubs replaced in Tasks 1 and 2 ---
-std::string parseContainerOpfPath(const std::string&) { return ""; }
+std::string parseContainerOpfPath(const std::string& xml) {
+    const std::size_t pos = xml.find("<rootfile ");
+    if (pos == std::string::npos) return "";
+    const std::size_t end = xml.find('>', pos);
+    if (end == std::string::npos) return "";
+    return attrValue(xml.substr(pos, end - pos), "full-path");
+}
 OpfData parseOpf(const std::string&) { return OpfData{}; }
 
 } // namespace rsvp
