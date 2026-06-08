@@ -4,3 +4,6 @@
 # OS noise
 .DS_Store
 Thumbs.db
+
+# Host build output
+/build/
