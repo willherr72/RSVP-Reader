@@ -116,3 +116,31 @@ TEST_CASE("Player with an empty document is finished and inert") {
     CHECK_FALSE(p.isPlaying());
     CHECK(p.tick(1000) == 0);
 }
+
+// Sentences: [The cat sat.] [It ran.] [End]
+static Document sentenceDoc() {
+    Document d;
+    d.tokens = {
+        {"The",  FLAG_NONE}, {"cat", FLAG_NONE}, {"sat.", FLAG_SENTENCE_END},
+        {"It",   FLAG_NONE}, {"ran.", FLAG_SENTENCE_END},
+        {"End",  FLAG_NONE},
+    };
+    return d;
+}
+
+TEST_CASE("nextSentence jumps to the start of the following sentence") {
+    Document d = sentenceDoc();
+    Player p(d, PacingConfig{});
+    p.nextSentence(); CHECK(p.index() == 3);  // after "sat."
+    p.nextSentence(); CHECK(p.index() == 5);  // after "ran."
+    p.nextSentence(); CHECK(p.index() == 5);  // none left -> clamps to last
+}
+
+TEST_CASE("prevSentence goes to current start, then previous start") {
+    Document d = sentenceDoc();
+    Player p(d, PacingConfig{});
+    p.seek(4); p.prevSentence(); CHECK(p.index() == 3); // start of current sentence
+    p.prevSentence();            CHECK(p.index() == 0); // previous sentence start
+    p.prevSentence();            CHECK(p.index() == 0); // clamp at first
+    p.seek(5); p.prevSentence(); CHECK(p.index() == 3); // from "End" -> sentence 2 start
+}
