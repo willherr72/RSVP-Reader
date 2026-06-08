@@ -16,11 +16,13 @@ add_executable(rsvp_tests
     test_byteio.cpp
     test_index.cpp
     test_utf8.cpp
+    test_entity.cpp
     ${CORE_DIR}/src/orp.cpp
     ${CORE_DIR}/src/pacing.cpp
     ${CORE_DIR}/src/player.cpp
     ${CORE_DIR}/src/tokenize.cpp
     ${CORE_DIR}/src/index.cpp
+    ${CORE_DIR}/src/entity.cpp
 )
 target_include_directories(rsvp_tests PRIVATE
     ${CORE_DIR}/include
