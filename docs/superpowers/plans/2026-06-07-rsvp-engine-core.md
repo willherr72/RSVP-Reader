@@ -6,7 +6,7 @@
 
 **Architecture:** A platform-independent C++17 library under `core/` (no ESP-IDF, no LVGL, no Arduino). It is exercised by a host CMake build under `test/host/` using the single-header [doctest] framework. The same `core/` sources later compile unchanged into the ESP-IDF firmware as a component. Strict TDD: red → green → commit.
 
-**Tech Stack:** C++17, CMake (≥3.16) + Ninja, doctest v2.4.11 (vendored single header).
+**Tech Stack:** C++17, CMake (≥3.16) with the Visual Studio 2022 (MSVC) generator, doctest v2.4.11 (vendored single header).
 
 ---
 
@@ -16,7 +16,7 @@ This plan is **only** the host-testable engine core — the logic heart of the p
 
 **Out of scope here (future plans):** TXT tokenizer + compiled-index codec (Plan 2); ESP-IDF project + HAL + LVGL bring-up (Plan 3); library/settings UI (Plan 4); Wi-Fi upload (Plan 5); EPUB indexer (Plan 6); PDF indexer (Plan 7).
 
-**Definition of done:** `cmake --build build/host && ./build/host/rsvp_tests` prints `[doctest] Status: SUCCESS!` with every test passing, covering ORP, pacing, and the player state machine.
+**Definition of done:** `cmake --build build/host && ./build/host/Debug/rsvp_tests.exe` prints `[doctest] Status: SUCCESS!` with every test passing, covering ORP, pacing, and the player state machine.
 
 ## File structure
 
@@ -43,11 +43,12 @@ Each unit is a small file with one responsibility (model / utf8 / orp / pacing /
 ## Conventions
 
 - **TDD:** write the failing test, watch it fail, implement minimally, watch it pass, commit.
+- **Toolchain:** CMake drives the installed **Visual Studio 2022 Build Tools (MSVC)** via the `-G "Visual Studio 17 2022"` generator — no Ninja or compiler-on-PATH needed. The VS generator is multi-config and defaults to **Debug**, so `cmake --build build/host` emits `build/host/Debug/rsvp_tests.exe`.
 - **Build dir** is `build/host/` (git-ignored — Step 0.1 adds it to `.gitignore`).
-- **Commands** below use `./build/host/rsvp_tests`; on Windows the binary is `build\host\rsvp_tests.exe` (same thing via the msys/Git-Bash shell).
+- **Running tests:** `./build/host/Debug/rsvp_tests.exe` from the repo root via the msys/Git-Bash shell.
 - **Commit messages** end with the trailer:
   `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`
-- **Branch:** create `feature/rsvp-engine-core` off `main` (or use a worktree via superpowers:using-git-worktrees) before Task 0. Do not implement on `main`.
+- **Branch:** work happens on `feature/rsvp-engine-core` (already created off the docs branch that carries the spec+plan, itself branched from `main`). Do not implement on `main`.
 
 ---
 
@@ -66,9 +67,8 @@ Each unit is a small file with one responsibility (model / utf8 / orp / pacing /
 Run:
 ```bash
 cmake --version   # expect >= 3.16
-ninja --version   # any version (ESP-IDF bundles Ninja)
 ```
-Expected: both print a version. If `ninja` is missing, install it or substitute another single-config generator in Step 0.6.
+Expected: CMake prints a version. The build uses the `-G "Visual Studio 17 2022"` generator (MSVC from the installed VS 2022 Build Tools), so no Ninja or compiler-on-PATH is required — CMake locates the toolset itself.
 
 Append to `.gitignore`:
 ```
@@ -181,9 +181,9 @@ add_test(NAME rsvp_tests COMMAND rsvp_tests)
 
 Run (from the repo root):
 ```bash
-cmake -S test/host -B build/host -G Ninja
+cmake -S test/host -B build/host -G "Visual Studio 17 2022"
 cmake --build build/host
-./build/host/rsvp_tests
+./build/host/Debug/rsvp_tests.exe
 ```
 Expected: `[doctest] Status: SUCCESS!` and `test cases: 1 | 1 passed`.
 
@@ -331,7 +331,7 @@ add_executable(rsvp_tests
 Run:
 ```bash
 cmake --build build/host
-./build/host/rsvp_tests
+./build/host/Debug/rsvp_tests.exe
 ```
 Expected: `[doctest] Status: FAILURE!` — `orpIndex("")` etc. report the stub's `999`, and the `orpSplit` checks fail with empty strings.
 
@@ -375,7 +375,7 @@ OrpSplit orpSplit(const std::string& word) {
 Run:
 ```bash
 cmake --build build/host
-./build/host/rsvp_tests
+./build/host/Debug/rsvp_tests.exe
 ```
 Expected: `[doctest] Status: SUCCESS!`, `test cases: 3 | 3 passed`.
 
@@ -499,7 +499,7 @@ add_executable(rsvp_tests
 Run:
 ```bash
 cmake --build build/host
-./build/host/rsvp_tests
+./build/host/Debug/rsvp_tests.exe
 ```
 Expected: `[doctest] Status: FAILURE!` — pacing checks get `-1`.
 
@@ -544,7 +544,7 @@ int wordDurationMs(const Token& tok, const PacingConfig& cfg) {
 Run:
 ```bash
 cmake --build build/host
-./build/host/rsvp_tests
+./build/host/Debug/rsvp_tests.exe
 ```
 Expected: `[doctest] Status: SUCCESS!`, `test cases: 8 | 8 passed`.
 
@@ -755,7 +755,7 @@ add_executable(rsvp_tests
 Run:
 ```bash
 cmake --build build/host
-./build/host/rsvp_tests
+./build/host/Debug/rsvp_tests.exe
 ```
 Expected: `[doctest] Status: FAILURE!` — the stub returns make the player checks fail.
 
@@ -836,7 +836,7 @@ void Player::prevSentence() {
 Run:
 ```bash
 cmake --build build/host
-./build/host/rsvp_tests
+./build/host/Debug/rsvp_tests.exe
 ```
 Expected: `[doctest] Status: SUCCESS!`, `test cases: 15 | 15 passed`.
 
@@ -895,7 +895,7 @@ TEST_CASE("prevSentence goes to current start, then previous start") {
 Run:
 ```bash
 cmake --build build/host
-./build/host/rsvp_tests
+./build/host/Debug/rsvp_tests.exe
 ```
 Expected: `[doctest] Status: SUCCESS!`, `test cases: 17 | 17 passed`. If either navigation test fails, fix `nextSentence`/`prevSentence` in `core/src/player.cpp` to satisfy the documented behavior, then re-run.
 
