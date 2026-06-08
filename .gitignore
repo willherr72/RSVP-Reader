@@ -1,0 +1,6 @@
+# Brainstorm visual companion (superpowers) — local, do not commit
+.superpowers/
+
+# OS noise
+.DS_Store
+Thumbs.db
