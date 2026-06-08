@@ -7,3 +7,9 @@ Thumbs.db
 
 # Host build output
 /build/
+
+# Stray compiled artifacts (e.g. ad-hoc probe builds outside build/)
+*.obj
+*.exe
+*.pdb
+*.ilk
