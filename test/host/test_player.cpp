@@ -83,6 +83,31 @@ TEST_CASE("Player progress") {
     CHECK(p.progress() == doctest::Approx(1.0));
 }
 
+TEST_CASE("Player togglePlay flips play state and respects finish") {
+    Document d = plainDoc({"one", "two"});
+    Player p(d, PacingConfig{});
+    CHECK_FALSE(p.isPlaying());
+    p.togglePlay(); CHECK(p.isPlaying());        // paused -> playing
+    p.togglePlay(); CHECK_FALSE(p.isPlaying());  // playing -> paused
+    p.play();
+    p.tick(200); p.tick(200);                    // finish the 2-word doc
+    CHECK(p.isFinished());
+    p.togglePlay();
+    CHECK_FALSE(p.isPlaying());                  // finished player is not resurrected
+}
+
+TEST_CASE("Player tick after finish is inert") {
+    Document d = plainDoc({"one", "two"});
+    Player p(d, PacingConfig{});
+    p.play();
+    CHECK(p.tick(200) == 1);
+    CHECK(p.tick(200) == 0);                     // completes last word -> finished
+    CHECK(p.isFinished());
+    CHECK(p.tick(1000) == 0);                    // further ticks do nothing
+    CHECK(p.index() == 1);
+    CHECK(p.isFinished());
+}
+
 TEST_CASE("Player with an empty document is finished and inert") {
     Document d;
     Player p(d, PacingConfig{});

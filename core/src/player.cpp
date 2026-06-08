@@ -9,6 +9,8 @@ void Player::play()       { if (!doc_.empty() && !finished_) playing_ = true; }
 void Player::pause()      { playing_ = false; }
 void Player::togglePlay() { if (playing_) pause(); else play(); }
 
+// Fraction of tokens preceding the current one (index/size): 0.0 at the start and
+// when empty, 1.0 only once finished. (Not "fraction of tokens seen".)
 double Player::progress() const {
     if (doc_.empty()) return 0.0;
     if (finished_)    return 1.0;
@@ -20,7 +22,9 @@ int Player::tick(int dtMs) {
     elapsed_ += dtMs;
     int advanced = 0;
     while (true) {
-        const int dur = wordDurationMs(doc_.tokens[index_], cfg_);
+        int dur = wordDurationMs(doc_.tokens[index_], cfg_);
+        if (dur < 1) dur = 1;   // defensive: guarantee forward progress even if a
+                                // pathological PacingConfig yields a zero duration
         if (elapsed_ < dur) break;
         elapsed_ -= dur;
         if (index_ + 1 >= doc_.size()) {       // last word completed
@@ -56,7 +60,7 @@ void Player::prevSentence() {
     for (std::size_t i = cur; i-- > 0; )
         if (doc_.tokens[i].has(FLAG_SENTENCE_END)) { s = i + 1; break; }
     if (s < cur) { seek(s); return; }           // mid-sentence -> jump to its start
-    if (s == 0)  { seek(0); return; }           // already at first sentence start
+    if (s == 0)  { seek(0); return; }           // no sentence-end found before current position -> first sentence start
     std::size_t ps = 0;                         // start of the previous sentence
     for (std::size_t i = s - 1; i-- > 0; )
         if (doc_.tokens[i].has(FLAG_SENTENCE_END)) { ps = i + 1; break; }

@@ -20,11 +20,14 @@ public:
 
     std::size_t  index() const { return index_; }
     std::size_t  size()  const { return doc_.size(); }
-    const Token& current() const { return doc_.tokens[index_]; } // precondition: !empty
+    // The token at the current index. Precondition: !document.empty().
+    // Remains valid after finish (returns the last token).
+    const Token& current() const { return doc_.tokens[index_]; }
     double       progress() const;
 
     // Advance the clock by dtMs. While playing, advances through any tokens whose
-    // duration has elapsed. Returns the number of tokens advanced past.
+    // duration has elapsed. Returns the number of index advances (tokens moved TO);
+    // completing the final token is NOT counted — use isFinished() to detect the end.
     int  tick(int dtMs);
 
     void seek(std::size_t i);   // clamps to [0, size-1]; resets the word timer
