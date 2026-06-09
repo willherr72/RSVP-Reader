@@ -20,6 +20,7 @@
 #include "user_config.h"
 #include "i2c_bsp.h"
 #include "lcd_bl_pwm_bsp.h"
+#include "sdcard_bsp.h"
 #include "ui_reader.h"
 
 
@@ -238,6 +239,7 @@ void app_main(void)
     flush_done_semaphore = xSemaphoreCreateBinary();
     assert(flush_done_semaphore);
     touch_i2c_master_Init();
+    sdcard_init();
     ESP_LOGI(TAG, "Initialize SPI bus");
 	gpio_config_t gpio_conf = {};
     gpio_conf.intr_type = GPIO_INTR_DISABLE;
