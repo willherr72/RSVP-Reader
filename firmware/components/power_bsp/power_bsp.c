@@ -26,7 +26,26 @@ void power_off(void)
 static void power_button_task(void *arg)
 {
     (void)arg;
-    for (;;) vTaskDelay(pdMS_TO_TICKS(1000));   // replaced in Task 2
+    const int kPollMs    = 20;
+    const int kLongCount = 1500 / kPollMs;   // ~1.5 s of continuous press = 75 samples
+    int  pressed = 0;
+    bool released_seen = false;   // boot guard: require one release before arming
+    bool fired = false;
+    for (;;) {
+        bool down = (gpio_get_level(PWR_BTN_GPIO) == 0);   // active-low
+        if (!down) {
+            released_seen = true;
+            pressed = 0;
+            fired = false;
+        } else if (released_seen && !fired) {
+            if (++pressed >= kLongCount) {
+                fired = true;
+                ESP_LOGI(TAG, "PWR long-press -> shutdown");
+                if (s_shutdown_cb) s_shutdown_cb();
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(kPollMs));
+    }
 }
 
 void power_bsp_init(void)
