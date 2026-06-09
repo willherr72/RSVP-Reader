@@ -8,6 +8,7 @@ idf_component_register(
     SRCS
         "src/orp.cpp"
         "src/gesture.cpp"
+        "src/cachepath.cpp"
         "src/pacing.cpp"
         "src/player.cpp"
         "src/tokenize.cpp"
