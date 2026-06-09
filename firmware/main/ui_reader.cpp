@@ -10,6 +10,7 @@
 #include "rsvp/indexbuilder.hpp"
 
 #include "book_loader.hpp"
+#include "power_bsp.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -42,6 +43,31 @@ lv_point_t g_press_pt = {0, 0};
 std::atomic<bool> g_load_done{false};
 std::string       g_loaded_title;
 lv_obj_t*         g_loading_scr = nullptr;
+
+// Power-off: the power_bsp button task flips this flag (it must not touch LVGL); an
+// lv_timer on the LVGL thread shows "Powering off..." then cuts power.
+std::atomic<bool> g_shutdown_requested{false};
+void on_shutdown_requested() { g_shutdown_requested.store(true); }
+
+void shutdown_timer_cb(lv_timer_t* t)
+{
+    if (!g_shutdown_requested.load()) return;
+    lv_obj_t* scr = lv_screen_active();
+    lv_obj_t* o = lv_obj_create(scr);
+    lv_obj_remove_style_all(o);
+    lv_obj_set_size(o, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_color(o, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
+    lv_obj_t* lbl = lv_label_create(o);
+    lv_obj_set_style_text_color(lbl, lv_color_hex(0xf2f5fa), 0);
+    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_48, 0);
+    lv_label_set_text(lbl, "Powering off...");
+    lv_obj_center(lbl);
+    lv_refr_now(NULL);                 // force the message to the panel before power cuts
+    vTaskDelay(pdMS_TO_TICKS(600));    // let it show
+    power_off();                       // P6 low -> battery powers down (USB: panel cuts)
+    lv_timer_del(t);
+}
 
 // Bottom status line: pause glyph (when paused) + wpm + progress %.
 void update_status()
@@ -279,6 +305,9 @@ extern "C" void rsvp_loading_screen_create(void)
     lv_obj_set_style_text_font(lbl, &lv_font_montserrat_48, 0);
     lv_label_set_text(lbl, "Loading...");
     lv_obj_center(lbl);
+
+    power_bsp_set_shutdown_cb(on_shutdown_requested);
+    lv_timer_create(shutdown_timer_cb, 100, nullptr);
 
     // The inflate path uses a ~32KB tinfl_decompressor on the stack, so the load task
     // needs a big stack (48KB fits the largest free internal block at this point).

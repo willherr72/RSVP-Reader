@@ -93,16 +93,21 @@
     - **Inflate needs a big stack:** miniz's `tinfl_decompressor` is ~32 KB on the stack,
       so a 64 KB task stack won't fit the largest free internal block once LVGL is up
       (~52 KB); 48 KB does.
-    - **Don't init the TCA9554 I/O expander.** A speculative SD-power init (creating the
-      TCA9554 + driving one pin) was unnecessary (SD is powered by default) AND it cut
-      **LCD power** ~2-3 s after boot — the panel showed the Loading screen then went
-      fully dark (backlight off), regardless of UI. Removed entirely. If a future feature
-      genuinely needs that expander, drive *all* its pins to known-good levels (the panel
-      power/backlight likely shares it) rather than letting the driver reset it.
+    - **TCA9554 P6 is the power-hold.** A speculative SD-power init drove the *wrong* pin
+      (P1) and never asserted **P6**, so the driver's reset left P6 low and cut **LCD power**
+      ~2-3 s after boot (Loading screen → fully dark). The fix is to assert **P6 high**, which
+      `power_bsp` now does (the power button, below). SD itself needs no expander at all.
   - Resume-on-reopen + library/browse UI remain Phase 2.
+- ✅ **Power button / power-hold** (spec/plan dated 2026-06-09): `power_bsp` creates the
+  I2C0 (GPIO48/47) TCA9554 (addr 000) and asserts **P6 high** as the first thing in
+  `app_main`, so the device stays powered on **battery** (it died before) and the panel
+  stays up. The **PWR button (GPIO16)** is polled for a **~1.5 s long-press** (release-first
+  boot guard) → "Powering off…" screen → `power_off()` drives **P6 low** to shut down.
+  - **USB caveat:** on USB the board stays powered regardless of P6, so a long-press just
+    shows "Powering off…" and freezes there; real power-down only happens on battery.
+  - Battery %/voltage (ADC), RTC, IMU, the BOOT button (GPIO0), and a menu "Power off"
+    entry are Phase 2/3.
 
 ## Next features (see docs/superpowers/specs/ + plans/)
-**Power button / shutdown** (sub-project B — the device can't power off yet; PWR
-button = GPIO16, BOOT = GPIO0; see `Examples/ESP-IDF/07_BATT_PWR_Test` in the
-Waveshare repo). Then **library + settings screens** (where touch `mirror_y=1`
-gets set), then IMU auto-rotate, RTC, real battery, Wi-Fi upload.
+**Library + settings screens** (where touch `mirror_y=1` gets set), then IMU auto-rotate,
+RTC, real battery (%/ADC), Wi-Fi upload.
