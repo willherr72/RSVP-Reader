@@ -23,6 +23,11 @@ void power_off(void)
     if (s_io) esp_io_expander_set_level(s_io, PWR_HOLD_PIN, 0);
 }
 
+void power_hold(void)
+{
+    if (s_io) esp_io_expander_set_level(s_io, PWR_HOLD_PIN, 1);
+}
+
 static void power_button_task(void *arg)
 {
     (void)arg;
@@ -69,7 +74,7 @@ void power_bsp_init(void)
         return;
     }
     esp_io_expander_set_dir(s_io, PWR_HOLD_PIN, IO_EXPANDER_OUTPUT);
-    esp_io_expander_set_level(s_io, PWR_HOLD_PIN, 1);   // hold power on
+    power_hold();                                       // P6 high: hold power on
     ESP_LOGI(TAG, "power-hold asserted (TCA9554 P6 high)");
 
     gpio_config_t btn = {

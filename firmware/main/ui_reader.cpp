@@ -51,9 +51,11 @@ void on_shutdown_requested() { g_shutdown_requested.store(true); }
 
 void shutdown_timer_cb(lv_timer_t* t)
 {
+    (void)t;
     if (!g_shutdown_requested.load()) return;
-    lv_obj_t* scr = lv_screen_active();
-    lv_obj_t* o = lv_obj_create(scr);
+    g_shutdown_requested.store(false);
+
+    lv_obj_t* o = lv_obj_create(lv_screen_active());
     lv_obj_remove_style_all(o);
     lv_obj_set_size(o, LV_PCT(100), LV_PCT(100));
     lv_obj_set_style_bg_color(o, lv_color_black(), 0);
@@ -63,10 +65,19 @@ void shutdown_timer_cb(lv_timer_t* t)
     lv_obj_set_style_text_font(lbl, &lv_font_montserrat_48, 0);
     lv_label_set_text(lbl, "Powering off...");
     lv_obj_center(lbl);
-    lv_refr_now(NULL);                 // force the message to the panel before power cuts
-    vTaskDelay(pdMS_TO_TICKS(600));    // let it show
-    power_off();                       // P6 low -> battery powers down (USB: panel cuts)
-    lv_timer_del(t);
+    lv_refr_now(NULL);
+
+    power_off();                        // P6 low -> on battery the board dies here
+    vTaskDelay(pdMS_TO_TICKS(2000));    // still alive after this -> externally (USB) powered
+
+    // Survived the power-off: re-hold power and return to the reader (don't get stuck).
+    power_hold();
+    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, 0);
+    lv_label_set_text(lbl, "On USB - unplug to power off");
+    lv_obj_center(lbl);
+    lv_refr_now(NULL);
+    vTaskDelay(pdMS_TO_TICKS(1500));
+    lv_obj_del(o);                      // dismiss; the reader underneath resumes
 }
 
 // Bottom status line: pause glyph (when paused) + wpm + progress %.
