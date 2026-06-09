@@ -3,6 +3,7 @@
 #include "rsvp/cachepath.hpp"
 #include "rsvp/epub.hpp"
 #include "rsvp/index.hpp"
+#include "rsvp/indexbuilder.hpp"
 #include "rsvp/tokenize.hpp"
 
 #include "esp_log.h"
@@ -57,6 +58,17 @@ bool read_file(const std::string& path, std::vector<std::uint8_t>& out) {
     return got == out.size();
 }
 
+// Read just the first maxBytes of a file (enough for the index header during listing).
+bool read_file_prefix(const std::string& path, std::vector<std::uint8_t>& out, std::size_t maxBytes) {
+    FILE* f = fopen(path.c_str(), "rb");
+    if (!f) return false;
+    out.resize(maxBytes);
+    const std::size_t got = fread(out.data(), 1, maxBytes, f);
+    fclose(f);
+    out.resize(got);
+    return got > 0;
+}
+
 std::string filename_stem(const std::string& path) {
     std::size_t slash = path.find_last_of('/');
     std::string name = (slash == std::string::npos) ? path : path.substr(slash + 1);
@@ -64,23 +76,54 @@ std::string filename_stem(const std::string& path) {
     return (dot == std::string::npos) ? name : name.substr(0, dot);
 }
 
+std::string pos_path(const std::string& bookPath) {
+    return rsvp::cacheIndexPath(bookPath) + ".pos";   // /sdcard/.rsvp/<name>.idx.pos
+}
+
+rsvp::CompiledIndex compile_sample() {
+    rsvp::IndexBuilder ib(rsvp::DocMeta{});
+    rsvp::tokenizePlainTextInto(
+        "Rapid serial visual presentation shows one word at a time. "
+        "Your eyes stay still while the words flow past you. "
+        "This little reader is now alive on the hardware!",
+        [&](const std::string& w, std::uint8_t f){ ib.addToken(w, f); });
+    return rsvp::CompiledIndex::parse(ib.finish());
+}
+
 } // namespace
 
-std::optional<LoadedBook> load_first_book() {
+void save_position(const std::string& bookPath, std::uint32_t idx) {
+    if (bookPath.empty()) return;
+    mkdir("/sdcard/.rsvp", 0777);
+    FILE* f = fopen(pos_path(bookPath).c_str(), "wb");
+    if (f) { fwrite(&idx, 1, sizeof idx, f); fclose(f); }
+}
+
+std::uint32_t load_position(const std::string& bookPath) {
+    if (bookPath.empty()) return 0;
+    FILE* f = fopen(pos_path(bookPath).c_str(), "rb");
+    if (!f) return 0;
+    std::uint32_t idx = 0;
+    const std::size_t got = fread(&idx, 1, sizeof idx, f);
+    fclose(f);
+    return got == sizeof idx ? idx : 0;
+}
+
+std::optional<LoadedBook> load_book(const std::string& book) {
+    if (book.empty()) {                       // built-in sample
+        rsvp::CompiledIndex ci = compile_sample();
+        if (!ci.ok()) return std::nullopt;
+        return LoadedBook{ std::move(ci), "Sample" };
+    }
     if (!sdcard_mounted()) { ESP_LOGW(TAG, "no SD card"); return std::nullopt; }
 
-    const std::string book = find_first_book();
-    if (book.empty()) { ESP_LOGW(TAG, "no .epub/.txt on card"); return std::nullopt; }
-    ESP_LOGI(TAG, "book: %s", book.c_str());
-
     struct stat st;
-    if (stat(book.c_str(), &st) != 0) return std::nullopt;
+    if (stat(book.c_str(), &st) != 0) { ESP_LOGW(TAG, "stat failed: %s", book.c_str()); return std::nullopt; }
     const std::uint32_t size  = (std::uint32_t)st.st_size;
     const std::uint32_t mtime = (std::uint32_t)st.st_mtime;
     const std::string idxPath = rsvp::cacheIndexPath(book);
 
-    std::vector<std::uint8_t> idx;
-    std::vector<std::uint8_t> cached;
+    std::vector<std::uint8_t> idx, cached;
     if (read_file(idxPath, cached) && rsvp::indexMatchesSource(cached, size, mtime)) {
         ESP_LOGI(TAG, "cache hit: %s", idxPath.c_str());
         idx = std::move(cached);
@@ -109,4 +152,37 @@ std::optional<LoadedBook> load_first_book() {
     std::string title = ci.meta().title;
     ESP_LOGI(TAG, "loaded \"%s\", %u words", title.c_str(), (unsigned)ci.wordCount());
     return LoadedBook{ std::move(ci), std::move(title) };
+}
+
+std::vector<BookEntry> list_books() {
+    std::vector<BookEntry> out;
+    DIR* d = sdcard_mounted() ? opendir("/sdcard") : nullptr;
+    if (d) {
+        for (dirent* e = readdir(d); e; e = readdir(d)) {
+            if (e->d_name[0] == '.') continue;
+            std::string name = e->d_name;
+            if (!ends_with_ci(name, ".epub") && !ends_with_ci(name, ".txt")) continue;
+            BookEntry be;
+            be.path = "/sdcard/" + name;
+            be.title = name;
+            std::vector<std::uint8_t> head;
+            if (read_file_prefix(rsvp::cacheIndexPath(be.path), head, 4096)) {
+                rsvp::IndexHeader h = rsvp::readIndexHeader(head);
+                if (h.ok) {
+                    if (!h.title.empty()) be.title = h.title;
+                    be.author = h.author;
+                    be.wordCount = h.wordCount;
+                }
+            }
+            be.position = load_position(be.path);
+            out.push_back(std::move(be));
+        }
+        closedir(d);
+    }
+    out.push_back(BookEntry{ "", "Sample", "built-in", 0, 0 });   // always openable
+    return out;
+}
+
+std::optional<LoadedBook> load_first_book() {
+    return load_book(find_first_book());
 }
