@@ -8,6 +8,8 @@
 #include "rsvp/pacing.hpp"
 #include "rsvp/gesture.hpp"
 
+#include "book_loader.hpp"
+
 #include <cstdio>
 
 using namespace rsvp;
@@ -154,6 +156,20 @@ extern "C" void rsvp_reading_screen_create(void)
     lv_obj_set_style_bg_color(g_scr, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(g_scr, LV_OPA_COVER, 0);
 
+    // Load the first SD book up front (its title goes in the status bar); fall
+    // back to the built-in sample if there's no card/book.
+    std::string book_title;
+    if (auto book = load_first_book()) {
+        g_doc      = std::move(book->doc);
+        book_title = book->title;
+    } else {
+        g_doc = tokenizePlainText(
+            "Rapid serial visual presentation shows one word at a time. "
+            "Your eyes stay still while the words flow past you. "
+            "This little reader is now alive on the hardware!");
+        book_title = "Sample";
+    }
+
     const lv_color_t dim   = lv_color_hex(0x8893a6);
     const lv_color_t faint = lv_color_hex(0x39414f);
     const lv_color_t white = lv_color_hex(0xf2f5fa);
@@ -161,7 +177,9 @@ extern "C" void rsvp_reading_screen_create(void)
 
     // top status
     lv_obj_t *batt = make_label(g_scr, dim, &lv_font_montserrat_16);
-    lv_label_set_text(batt, "84%");
+    lv_label_set_long_mode(batt, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(batt, 360);
+    lv_label_set_text(batt, book_title.c_str());
     lv_obj_align(batt, LV_ALIGN_TOP_LEFT, 10, 6);
 
     lv_obj_t *clk = make_label(g_scr, dim, &lv_font_montserrat_16);
@@ -199,11 +217,7 @@ extern "C" void rsvp_reading_screen_create(void)
     g_wpm_lbl = make_label(g_scr, dim, &lv_font_montserrat_16);
     lv_obj_align(g_wpm_lbl, LV_ALIGN_BOTTOM_MID, 0, -6);
 
-    // --- engine: tokenize a built-in sample and drive the Player ---
-    g_doc = tokenizePlainText(
-        "Rapid serial visual presentation shows one word at a time. "
-        "Your eyes stay still while the words flow past you. "
-        "This little reader is now alive on the hardware!");
+    // --- engine: drive the Player over the loaded document ---
     PacingConfig cfg;
     cfg.wpm = g_wpm;
     static Player player(g_doc, cfg);
