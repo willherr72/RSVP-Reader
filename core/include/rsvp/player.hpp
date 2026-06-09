@@ -1,15 +1,16 @@
 #pragma once
-#include "rsvp/token.hpp"
+#include "rsvp/index.hpp"
 #include "rsvp/pacing.hpp"
 #include <cstddef>
 
 namespace rsvp {
 
-// Drives playback over a Document. Time is supplied externally via tick(dtMs),
-// so it is fully deterministic and testable with no real clock.
+// Drives playback over a CompiledIndex, reading the current word on demand (no full
+// Document). Time is supplied externally via tick(dtMs), so it is fully deterministic
+// and testable with no real clock.
 class Player {
 public:
-    Player(const Document& doc, PacingConfig cfg);
+    Player(const CompiledIndex& idx, PacingConfig cfg);
 
     void play();
     void pause();
@@ -19,10 +20,10 @@ public:
     bool isFinished() const { return finished_; }
 
     std::size_t  index() const { return index_; }
-    std::size_t  size()  const { return doc_.size(); }
-    // The token at the current index. Precondition: !document.empty().
-    // Remains valid after finish (returns the last token).
-    const Token& current() const { return doc_.tokens[index_]; }
+    std::size_t  size()  const { return idx_.wordCount(); }
+    // The token at the current index, materialized from the index and cached on each
+    // index change. Remains valid after finish (stays on the last token).
+    const Token& current() const { return current_; }
     double       progress() const;
 
     // Pacing config access — setConfig adjusts pacing live (e.g. WPM) and takes
@@ -40,12 +41,13 @@ public:
     void prevSentence();        // jump to the start of the current/previous sentence
 
 private:
-    const Document& doc_;
-    PacingConfig    cfg_;
-    std::size_t     index_    = 0;
-    int             elapsed_  = 0;
-    bool            playing_  = false;
-    bool            finished_ = false;
+    const CompiledIndex& idx_;
+    PacingConfig         cfg_;
+    Token                current_{};
+    std::size_t          index_    = 0;
+    int                  elapsed_  = 0;
+    bool                 playing_  = false;
+    bool                 finished_ = false;
 };
 
 } // namespace rsvp

@@ -1,17 +1,27 @@
 #include "doctest.h"
 #include "rsvp/player.hpp"
+#include "rsvp/index.hpp"
+#include "rsvp/indexbuilder.hpp"
 #include <initializer_list>
 using namespace rsvp;
 
-static Document plainDoc(std::initializer_list<const char*> words) {
-    Document d;
-    for (auto w : words) d.tokens.push_back(Token{w, FLAG_NONE});
-    return d;
+// The Player holds a const CompiledIndex&, so each test keeps the index in a named
+// local that outlives the Player (a temporary would dangle).
+static CompiledIndex plainIndex(std::initializer_list<const char*> words) {
+    IndexBuilder ib(DocMeta{});
+    for (auto w : words) ib.addToken(w, FLAG_NONE);
+    return CompiledIndex::parse(ib.finish());
+}
+
+static CompiledIndex makeIndex(std::initializer_list<Token> toks) {
+    IndexBuilder ib(DocMeta{});
+    for (const auto& t : toks) ib.addToken(t.text, t.flags);
+    return CompiledIndex::parse(ib.finish());
 }
 
 TEST_CASE("Player initial state") {
-    Document d = plainDoc({"one", "two", "three"});
-    Player p(d, PacingConfig{}); // 200 ms/word
+    CompiledIndex idx = plainIndex({"one", "two", "three"});
+    Player p(idx, PacingConfig{}); // 200 ms/word
     CHECK(p.index() == 0);
     CHECK(p.size() == 3);
     CHECK_FALSE(p.isPlaying());
@@ -20,8 +30,8 @@ TEST_CASE("Player initial state") {
 }
 
 TEST_CASE("Player advances on tick while playing") {
-    Document d = plainDoc({"one", "two", "three"});
-    Player p(d, PacingConfig{});
+    CompiledIndex idx = plainIndex({"one", "two", "three"});
+    Player p(idx, PacingConfig{});
     p.play();
     CHECK(p.isPlaying());
     CHECK(p.tick(199) == 0);
@@ -32,8 +42,8 @@ TEST_CASE("Player advances on tick while playing") {
 }
 
 TEST_CASE("Player finishes after the last word completes") {
-    Document d = plainDoc({"one", "two", "three"});
-    Player p(d, PacingConfig{});
+    CompiledIndex idx = plainIndex({"one", "two", "three"});
+    Player p(idx, PacingConfig{});
     p.play();
     CHECK(p.tick(200) == 1); CHECK(p.index() == 1);
     CHECK(p.tick(200) == 1); CHECK(p.index() == 2);
@@ -44,8 +54,8 @@ TEST_CASE("Player finishes after the last word completes") {
 }
 
 TEST_CASE("Player pause halts advance and resumes continuously") {
-    Document d = plainDoc({"one", "two", "three"});
-    Player p(d, PacingConfig{});
+    CompiledIndex idx = plainIndex({"one", "two", "three"});
+    Player p(idx, PacingConfig{});
     p.play();
     CHECK(p.tick(100) == 0);
     p.pause();
@@ -58,8 +68,8 @@ TEST_CASE("Player pause halts advance and resumes continuously") {
 }
 
 TEST_CASE("Player seek clamps and resets the timer") {
-    Document d = plainDoc({"one", "two", "three"});
-    Player p(d, PacingConfig{});
+    CompiledIndex idx = plainIndex({"one", "two", "three"});
+    Player p(idx, PacingConfig{});
     p.seek(99);
     CHECK(p.index() == 2);
     p.seek(1);
@@ -71,8 +81,8 @@ TEST_CASE("Player seek clamps and resets the timer") {
 }
 
 TEST_CASE("Player progress") {
-    Document d = plainDoc({"one", "two", "three"});
-    Player p(d, PacingConfig{});
+    CompiledIndex idx = plainIndex({"one", "two", "three"});
+    Player p(idx, PacingConfig{});
     CHECK(p.progress() == doctest::Approx(0.0));
     p.seek(1);
     CHECK(p.progress() == doctest::Approx(1.0 / 3.0));
@@ -84,8 +94,8 @@ TEST_CASE("Player progress") {
 }
 
 TEST_CASE("Player togglePlay flips play state and respects finish") {
-    Document d = plainDoc({"one", "two"});
-    Player p(d, PacingConfig{});
+    CompiledIndex idx = plainIndex({"one", "two"});
+    Player p(idx, PacingConfig{});
     CHECK_FALSE(p.isPlaying());
     p.togglePlay(); CHECK(p.isPlaying());        // paused -> playing
     p.togglePlay(); CHECK_FALSE(p.isPlaying());  // playing -> paused
@@ -97,8 +107,8 @@ TEST_CASE("Player togglePlay flips play state and respects finish") {
 }
 
 TEST_CASE("Player tick after finish is inert") {
-    Document d = plainDoc({"one", "two"});
-    Player p(d, PacingConfig{});
+    CompiledIndex idx = plainIndex({"one", "two"});
+    Player p(idx, PacingConfig{});
     p.play();
     CHECK(p.tick(200) == 1);
     CHECK(p.tick(200) == 0);                     // completes last word -> finished
@@ -109,8 +119,8 @@ TEST_CASE("Player tick after finish is inert") {
 }
 
 TEST_CASE("Player with an empty document is finished and inert") {
-    Document d;
-    Player p(d, PacingConfig{});
+    CompiledIndex idx = plainIndex({});
+    Player p(idx, PacingConfig{});
     CHECK(p.isFinished());
     p.play();
     CHECK_FALSE(p.isPlaying());
@@ -118,27 +128,25 @@ TEST_CASE("Player with an empty document is finished and inert") {
 }
 
 // Sentences: [The cat sat.] [It ran.] [End]
-static Document sentenceDoc() {
-    Document d;
-    d.tokens = {
+static CompiledIndex sentenceIndex() {
+    return makeIndex({
         {"The",  FLAG_NONE}, {"cat", FLAG_NONE}, {"sat.", FLAG_SENTENCE_END},
         {"It",   FLAG_NONE}, {"ran.", FLAG_SENTENCE_END},
         {"End",  FLAG_NONE},
-    };
-    return d;
+    });
 }
 
 TEST_CASE("nextSentence jumps to the start of the following sentence") {
-    Document d = sentenceDoc();
-    Player p(d, PacingConfig{});
+    CompiledIndex idx = sentenceIndex();
+    Player p(idx, PacingConfig{});
     p.nextSentence(); CHECK(p.index() == 3);  // after "sat."
     p.nextSentence(); CHECK(p.index() == 5);  // after "ran."
     p.nextSentence(); CHECK(p.index() == 5);  // none left -> clamps to last
 }
 
 TEST_CASE("prevSentence goes to current start, then previous start") {
-    Document d = sentenceDoc();
-    Player p(d, PacingConfig{});
+    CompiledIndex idx = sentenceIndex();
+    Player p(idx, PacingConfig{});
     p.seek(4); p.prevSentence(); CHECK(p.index() == 3); // start of current sentence
     p.prevSentence();            CHECK(p.index() == 0); // previous sentence start
     p.prevSentence();            CHECK(p.index() == 0); // clamp at first
@@ -146,8 +154,8 @@ TEST_CASE("prevSentence goes to current start, then previous start") {
 }
 
 TEST_CASE("Player setConfig adjusts pacing") {
-    Document d = plainDoc({"one", "two"});
-    Player p(d, PacingConfig{});         // 300 wpm -> 200 ms/word
+    CompiledIndex idx = plainIndex({"one", "two"});
+    Player p(idx, PacingConfig{});       // 300 wpm -> 200 ms/word
     CHECK(p.config().wpm == 300);
     PacingConfig slow = p.config();
     slow.wpm = 150;                      // 400 ms/word
