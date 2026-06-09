@@ -355,7 +355,7 @@ void app_main(void)
     xTaskCreatePinnedToCore(example_backlight_loop_task, "example_backlight_loop_task", 4 * 1024, NULL, 2, NULL,0); 
     if (example_lvgl_lock(-1)) 
     {   
-        rsvp_reading_screen_create();   /* RSVP reader reading screen (rotated landscape 640x172) */
+        rsvp_loading_screen_create();   /* Loading... -> book compiles in a task -> reader screen */
 
         // Release the mutex
         example_lvgl_unlock();

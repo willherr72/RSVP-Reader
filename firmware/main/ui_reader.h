@@ -5,9 +5,10 @@
 extern "C" {
 #endif
 
-// Build the RSVP reading screen on the active LVGL screen (static mockup for now:
-// word with red ORP letter, focal ticks, flankers, status). Driven by the engine later.
-void rsvp_reading_screen_create(void);
+// Show a "Loading..." screen and compile/parse the book in a background task; the
+// reader screen is built automatically once the book is ready (or the sample, on
+// failure). Call once at startup under the LVGL lock.
+void rsvp_loading_screen_create(void);
 
 #ifdef __cplusplus
 }

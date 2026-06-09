@@ -11,7 +11,11 @@
 
 #include "book_loader.hpp"
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_log.h"
 #include <cstdio>
+#include <atomic>
 
 using namespace rsvp;
 
@@ -33,6 +37,11 @@ lv_obj_t *g_tick_top = nullptr;
 lv_obj_t *g_tick_bot = nullptr;
 
 lv_point_t g_press_pt = {0, 0};
+
+// Set by the background load task (off the LVGL thread); polled by an lv_timer.
+std::atomic<bool> g_load_done{false};
+std::string       g_loaded_title;
+lv_obj_t*         g_loading_scr = nullptr;
 
 // Bottom status line: pause glyph (when paused) + wpm + progress %.
 void update_status()
@@ -154,28 +163,12 @@ lv_obj_t *make_label(lv_obj_t *parent, lv_color_t color, const lv_font_t *font)
 
 }  // namespace
 
-extern "C" void rsvp_reading_screen_create(void)
+// Build the reader screen from the already-loaded g_index (populated by load_task).
+static void build_reader(const std::string& book_title)
 {
     g_scr = lv_screen_active();
     lv_obj_set_style_bg_color(g_scr, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(g_scr, LV_OPA_COVER, 0);
-
-    // Load the first SD book up front (its title goes in the status bar); fall back
-    // to the built-in sample (compiled to a tiny index) if there's no card/book.
-    std::string book_title;
-    if (auto book = load_first_book()) {
-        g_index    = std::move(book->index);
-        book_title = book->title;
-    } else {
-        IndexBuilder ib(DocMeta{});
-        tokenizePlainTextInto(
-            "Rapid serial visual presentation shows one word at a time. "
-            "Your eyes stay still while the words flow past you. "
-            "This little reader is now alive on the hardware!",
-            [&](const std::string& w, std::uint8_t f){ ib.addToken(w, f); });
-        g_index    = CompiledIndex::parse(ib.finish());
-        book_title = "Sample";
-    }
 
     const lv_color_t dim   = lv_color_hex(0x8893a6);
     const lv_color_t faint = lv_color_hex(0x39414f);
@@ -241,4 +234,64 @@ extern "C" void rsvp_reading_screen_create(void)
     lv_obj_add_flag(touch, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(touch, touch_event_cb, LV_EVENT_PRESSED, nullptr);
     lv_obj_add_event_cb(touch, touch_event_cb, LV_EVENT_RELEASED, nullptr);
+}
+
+namespace {
+
+// Background (its own big stack, off the LVGL/main thread): scan + compile/parse the
+// first SD book into g_index, or fall back to the built-in sample. Never touches LVGL;
+// publishes completion via g_load_done.
+void load_task(void*)
+{
+    if (auto book = load_first_book()) {
+        g_index        = std::move(book->index);
+        g_loaded_title = book->title;
+    } else {
+        IndexBuilder ib(DocMeta{});
+        tokenizePlainTextInto(
+            "Rapid serial visual presentation shows one word at a time. "
+            "Your eyes stay still while the words flow past you. "
+            "This little reader is now alive on the hardware!",
+            [&](const std::string& w, std::uint8_t f){ ib.addToken(w, f); });
+        g_index        = CompiledIndex::parse(ib.finish());
+        g_loaded_title = "Sample";
+    }
+    g_load_done.store(true);
+    vTaskDelete(nullptr);
+}
+
+// LVGL thread: once the load finishes, drop the Loading screen and build the reader.
+void loading_timer_cb(lv_timer_t* t)
+{
+    if (!g_load_done.load()) return;
+    if (g_loading_scr) { lv_obj_del(g_loading_scr); g_loading_scr = nullptr; }
+    build_reader(g_loaded_title);
+    lv_timer_del(t);
+}
+
+} // namespace
+
+extern "C" void rsvp_loading_screen_create(void)
+{
+    lv_obj_t* scr = lv_screen_active();
+    lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
+
+    g_loading_scr = lv_obj_create(scr);
+    lv_obj_remove_style_all(g_loading_scr);
+    lv_obj_set_size(g_loading_scr, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_color(g_loading_scr, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(g_loading_scr, LV_OPA_COVER, 0);
+
+    lv_obj_t* lbl = lv_label_create(g_loading_scr);
+    lv_obj_set_style_text_color(lbl, lv_color_hex(0xf2f5fa), 0);
+    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_48, 0);
+    lv_label_set_text(lbl, "Loading...");
+    lv_obj_center(lbl);
+
+    // The inflate path uses a ~32KB tinfl_decompressor on the stack, so the load task
+    // needs a big stack (48KB fits the largest free internal block at this point).
+    if (xTaskCreatePinnedToCore(load_task, "bookload", 48 * 1024, nullptr, 3, nullptr, 1) != pdPASS)
+        ESP_LOGE("ui", "failed to create book-load task");
+    lv_timer_create(loading_timer_cb, 50, nullptr);
 }
