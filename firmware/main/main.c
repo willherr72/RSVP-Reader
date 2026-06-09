@@ -21,6 +21,7 @@
 #include "i2c_bsp.h"
 #include "lcd_bl_pwm_bsp.h"
 #include "sdcard_bsp.h"
+#include "power_bsp.h"
 #include "ui_reader.h"
 
 
@@ -235,6 +236,7 @@ static void example_lvgl_port_task(void *arg)
 
 void app_main(void)
 {
+    power_bsp_init();   // assert battery power-hold (TCA9554 P6) ASAP
     lcd_bl_pwm_bsp_init(LCD_PWM_MODE_255);
     flush_done_semaphore = xSemaphoreCreateBinary();
     assert(flush_done_semaphore);
