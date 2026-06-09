@@ -56,9 +56,21 @@
     **X-axis is currently screen-relative (mirrored vs. physical)** — invisible
     for the gesture-only reader, but **set `mirror_y=1`** in the `esp_lcd_touch_config_t`
     when adding position-dependent UI (library/settings buttons) so taps line up.
+- ✅ **SD card + book loading** (spec/plan dated 2026-06-09): mounts the SDMMC TF
+  card (1-line, **CLK41/CMD39/D040**, `/sdcard`) at boot via `sdcard_bsp`; the
+  full `core` document pipeline (index/entity/htmltext/opf/epub/zipreader) is
+  registered for firmware via a `miniz` component (note: include miniz as
+  `"miniz/miniz.h"` — a bare `"miniz.h"` collides with ESP-IDF's inflate-only
+  `esp_rom/include/miniz.h`). `book_loader` scans `/sdcard` for the first
+  `.epub`/`.txt`, compile-and-caches a compiled index to `/sdcard/.rsvp/<name>.idx`
+  (gated by `indexMatchesSource`), and the reader reads it (title shown top-left),
+  falling back to the built-in sample on any failure.
+  - **Verified:** host tests + on-device **no-card fallback** (mount fails
+    gracefully → sample). **Pending a test card:** the real load/cache/title/read
+    path. Resume-on-reopen + the library/browse UI are Phase 2.
 
 ## Next features (see docs/superpowers/specs/ + plans/)
-SD card mount + real EPUB/TXT loading (register the rest of `core` — index/
-entity/htmltext/opf/epub/zipreader — plus vendored miniz as firmware
-components), library + settings screens, IMU auto-rotate, real battery, Wi-Fi
-upload.
+**Power button / shutdown** (sub-project B — the device can't power off yet; PWR
+button = GPIO16, BOOT = GPIO0; see `Examples/ESP-IDF/07_BATT_PWR_Test` in the
+Waveshare repo). Then **library + settings screens** (where touch `mirror_y=1`
+gets set), then IMU auto-rotate, RTC, real battery, Wi-Fi upload.
