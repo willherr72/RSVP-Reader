@@ -16,6 +16,7 @@
 #include "lvgl.h"
 #include "lv_demos.h"
 #include "esp_lcd_axs15231b.h"
+#include "esp_lcd_touch.h"
 #include "user_config.h"
 #include "i2c_bsp.h"
 #include "lcd_bl_pwm_bsp.h"
@@ -138,22 +139,20 @@ static uint32_t s_touch_presses = 0;
 static int64_t  s_touch_log_us = 0;
 static bool     s_touch_was_pressed = false;
 
+static esp_lcd_touch_handle_t g_tp = NULL;
+
 static void TouchInputReadCallback(lv_indev_t * indev, lv_indev_data_t *indevData)
 {
-    uint8_t read_touchpad_cmd[11] = {0xb5, 0xab, 0xa5, 0x5a, 0x0, 0x0, 0x0, 0x0e,0x0, 0x0, 0x0};
-    uint8_t buff[32] = {0};
-    ESP_ERROR_CHECK_WITHOUT_ABORT(i2c_master_write_read_dev(disp_touch_dev_handle,read_touchpad_cmd,11,buff,32));
-    uint16_t pointX;
-    uint16_t pointY;
-    pointX = (((uint16_t)buff[2] & 0x0f) << 8) | (uint16_t)buff[3];
-    pointY = (((uint16_t)buff[4] & 0x0f) << 8) | (uint16_t)buff[5];
-    bool pressed_now = (buff[1] > 0 && buff[1] < 5);
+    uint16_t x = 0, y = 0;
+    uint8_t  cnt = 0;
+    esp_lcd_touch_read_data(g_tp);
+    bool pressed_now = esp_lcd_touch_get_coordinates(g_tp, &x, &y, NULL, &cnt, 1) && cnt > 0;
 
     // DEBUG instrumentation: read-rate + press edges over the serial console.
     s_touch_reads++;
     if (pressed_now) s_touch_presses++;
     if (pressed_now && !s_touch_was_pressed) {
-        ESP_LOGI(TAG, "touch PRESS edge x=%u y=%u", (unsigned)pointX, (unsigned)pointY);
+        ESP_LOGI(TAG, "touch PRESS edge x=%u y=%u", (unsigned)x, (unsigned)y);
     }
     s_touch_was_pressed = pressed_now;
     int64_t now_us = esp_timer_get_time();
@@ -165,24 +164,11 @@ static void TouchInputReadCallback(lv_indev_t * indev, lv_indev_data_t *indevDat
         s_touch_log_us = now_us;
     }
 
-    if (pressed_now)
-    {
+    if (pressed_now) {
         indevData->state = LV_INDEV_STATE_PRESSED;
-#if (Rotated == USER_DISP_ROT_90)
-        // Raw touch is already landscape-oriented: X in [0,~640], Y in [0,~172].
-        if(pointX > EXAMPLE_LCD_V_RES) pointX = EXAMPLE_LCD_V_RES;
-        if(pointY > EXAMPLE_LCD_H_RES) pointY = EXAMPLE_LCD_H_RES;
-        indevData->point.x = pointX;
-        indevData->point.y = pointY;
-#else
-        if(pointX > EXAMPLE_LCD_V_RES) pointX = EXAMPLE_LCD_V_RES;
-        if(pointY > EXAMPLE_LCD_H_RES) pointY = EXAMPLE_LCD_H_RES;
-        indevData->point.x = pointY;
-        indevData->point.y = (EXAMPLE_LCD_V_RES-pointX);
-#endif
-    }
-    else 
-    {
+        indevData->point.x = x;
+        indevData->point.y = y;
+    } else {
         indevData->state = LV_INDEV_STATE_RELEASED;
     }
 }
@@ -319,6 +305,22 @@ void app_main(void)
     touch_indev = lv_indev_create();
     lv_indev_set_type(touch_indev, LV_INDEV_TYPE_POINTER);
     lv_indev_set_read_cb(touch_indev, TouchInputReadCallback);
+
+    /* AXS15231B touch over the shared I2C bus (user_i2c_port1_handle). Feed LVGL
+       its logical (pre-rotation, portrait 172x640) coordinates; swap_xy converts
+       the panel's landscape raw read. mirror_* dialed in via the corner-tap check. */
+    esp_lcd_panel_io_handle_t tp_io = NULL;
+    esp_lcd_panel_io_i2c_config_t tp_io_cfg = ESP_LCD_TOUCH_IO_I2C_AXS15231B_CONFIG();
+    tp_io_cfg.scl_speed_hz = 300000;   // CONFIG_EX macro is buggy (param name collides with field)
+    ESP_ERROR_CHECK(esp_lcd_new_panel_io_i2c(user_i2c_port1_handle, &tp_io_cfg, &tp_io));
+    esp_lcd_touch_config_t tp_cfg = {
+        .x_max = EXAMPLE_LCD_H_RES,
+        .y_max = EXAMPLE_LCD_V_RES,
+        .rst_gpio_num = -1,
+        .int_gpio_num = -1,
+        .flags = { .swap_xy = 1, .mirror_x = 0, .mirror_y = 0 },
+    };
+    ESP_ERROR_CHECK(esp_lcd_touch_new_i2c_axs15231b(tp_io, &tp_cfg, &g_tp));
 
     esp_timer_create_args_t lvgl_tick_timer_args = {};
     lvgl_tick_timer_args.callback = &example_increase_lvgl_tick;
