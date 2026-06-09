@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "main.c" "ui_reader.cpp"
+    SRCS "main.c" "ui_reader.cpp" "book_loader.cpp"
     INCLUDE_DIRS ".")
 
 set_source_files_properties(
