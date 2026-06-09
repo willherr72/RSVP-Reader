@@ -8,14 +8,17 @@
 
 #define PWR_HOLD_PIN  IO_EXPANDER_PIN_NUM_6   // TCA9554 P6: HIGH=stay on, LOW=power off
 #define PWR_BTN_GPIO  GPIO_NUM_16             // PWR button, active-low
+#define BOOT_BTN_GPIO GPIO_NUM_0              // BOOT button, active-low (menu/back)
 #define I2C0_SCL_GPIO GPIO_NUM_48
 #define I2C0_SDA_GPIO GPIO_NUM_47
 
 static const char *TAG = "power_bsp";
 static esp_io_expander_handle_t s_io = NULL;
 static power_shutdown_cb_t s_shutdown_cb = NULL;
+static power_shutdown_cb_t s_boot_cb = NULL;
 
 void power_bsp_set_shutdown_cb(power_shutdown_cb_t cb) { s_shutdown_cb = cb; }
+void power_bsp_set_boot_cb(power_shutdown_cb_t cb) { s_boot_cb = cb; }
 
 void power_off(void)
 {
@@ -36,6 +39,8 @@ static void power_button_task(void *arg)
     int  pressed = 0;
     bool released_seen = false;   // boot guard: require one release before arming
     bool fired = false;
+    bool boot_was_down = false;   // BOOT (GPIO0) edge tracking
+    int  boot_held = 0;
     for (;;) {
         bool down = (gpio_get_level(PWR_BTN_GPIO) == 0);   // active-low
         if (!down) {
@@ -49,6 +54,19 @@ static void power_button_task(void *arg)
                 if (s_shutdown_cb) s_shutdown_cb();
             }
         }
+
+        bool boot_down = (gpio_get_level(BOOT_BTN_GPIO) == 0);   // active-low
+        if (boot_down) {
+            boot_held++;
+        } else {
+            if (boot_was_down && boot_held < (1000 / kPollMs)) {   // released within ~1s = short press
+                ESP_LOGI(TAG, "BOOT short press -> menu/back");
+                if (s_boot_cb) s_boot_cb();
+            }
+            boot_held = 0;
+        }
+        boot_was_down = boot_down;
+
         vTaskDelay(pdMS_TO_TICKS(kPollMs));
     }
 }
@@ -78,7 +96,7 @@ void power_bsp_init(void)
     ESP_LOGI(TAG, "power-hold asserted (TCA9554 P6 high)");
 
     gpio_config_t btn = {
-        .pin_bit_mask = (uint64_t)1 << PWR_BTN_GPIO,
+        .pin_bit_mask = ((uint64_t)1 << PWR_BTN_GPIO) | ((uint64_t)1 << BOOT_BTN_GPIO),
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_ENABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,

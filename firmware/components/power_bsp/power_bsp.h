@@ -22,6 +22,10 @@ void power_hold(void);
 // and must NOT touch LVGL directly.
 void power_bsp_set_shutdown_cb(power_shutdown_cb_t cb);
 
+// Register a callback fired on a short press of the BOOT button (GPIO0): the menu/back
+// action. Runs in the button task; must NOT touch LVGL directly.
+void power_bsp_set_boot_cb(power_shutdown_cb_t cb);
+
 #ifdef __cplusplus
 }
 #endif
