@@ -1,14 +1,14 @@
 #pragma once
-#include "rsvp/token.hpp"
+#include "rsvp/index.hpp"
 #include <optional>
 #include <string>
 
 struct LoadedBook {
-    rsvp::Document doc;
-    std::string    title;
-    std::string    author;
+    rsvp::CompiledIndex index;
+    std::string         title;
 };
 
 // Scan /sdcard for the first .epub/.txt, load-or-compile its index (cached in
-// /sdcard/.rsvp/), and return it. nullopt on no-card/no-book/parse failure.
+// /sdcard/.rsvp/), and parse it. nullopt on no-card/no-book/failure (the caller
+// substitutes the sample).
 std::optional<LoadedBook> load_first_book();

@@ -7,6 +7,7 @@
 #include "rsvp/orp.hpp"
 #include "rsvp/pacing.hpp"
 #include "rsvp/gesture.hpp"
+#include "rsvp/indexbuilder.hpp"
 
 #include "book_loader.hpp"
 
@@ -16,7 +17,7 @@ using namespace rsvp;
 
 namespace {
 
-Document    g_doc;
+CompiledIndex g_index;
 Player*     g_player  = nullptr;
 int         g_wpm     = 300;
 std::size_t g_lastIdx = static_cast<std::size_t>(-1);
@@ -48,7 +49,7 @@ void update_status()
 // flank pre/post + prev/next words, and reposition the focal ticks over the ORP letter.
 void refresh_word()
 {
-    if (g_player == nullptr || g_doc.empty()) return;
+    if (g_player == nullptr || g_index.wordCount() == 0) return;
     const std::size_t idx = g_player->index();
 
     const OrpSplit s = orpSplit(g_player->current().text);
@@ -56,8 +57,11 @@ void refresh_word()
     lv_label_set_text(g_orp,  s.orp.c_str());
     lv_label_set_text(g_post, s.post.c_str());
 
-    lv_label_set_text(g_prev, idx > 0 ? g_doc.tokens[idx - 1].text.c_str() : "");
-    lv_label_set_text(g_next, (idx + 1 < g_doc.size()) ? g_doc.tokens[idx + 1].text.c_str() : "");
+    // at() returns a Token by value; bind to a local before .c_str() to avoid dangling.
+    const Token prev = (idx > 0) ? g_index.at(idx - 1) : Token{};
+    const Token next = (idx + 1 < g_index.wordCount()) ? g_index.at(idx + 1) : Token{};
+    lv_label_set_text(g_prev, prev.text.c_str());
+    lv_label_set_text(g_next, next.text.c_str());
 
     lv_obj_align(g_orp, LV_ALIGN_CENTER, 0, 0);
     lv_obj_update_layout(g_scr);
@@ -156,17 +160,20 @@ extern "C" void rsvp_reading_screen_create(void)
     lv_obj_set_style_bg_color(g_scr, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(g_scr, LV_OPA_COVER, 0);
 
-    // Load the first SD book up front (its title goes in the status bar); fall
-    // back to the built-in sample if there's no card/book.
+    // Load the first SD book up front (its title goes in the status bar); fall back
+    // to the built-in sample (compiled to a tiny index) if there's no card/book.
     std::string book_title;
     if (auto book = load_first_book()) {
-        g_doc      = std::move(book->doc);
+        g_index    = std::move(book->index);
         book_title = book->title;
     } else {
-        g_doc = tokenizePlainText(
+        IndexBuilder ib(DocMeta{});
+        tokenizePlainTextInto(
             "Rapid serial visual presentation shows one word at a time. "
             "Your eyes stay still while the words flow past you. "
-            "This little reader is now alive on the hardware!");
+            "This little reader is now alive on the hardware!",
+            [&](const std::string& w, std::uint8_t f){ ib.addToken(w, f); });
+        g_index    = CompiledIndex::parse(ib.finish());
         book_title = "Sample";
     }
 
@@ -220,7 +227,7 @@ extern "C" void rsvp_reading_screen_create(void)
     // --- engine: drive the Player over the loaded document ---
     PacingConfig cfg;
     cfg.wpm = g_wpm;
-    static Player player(g_doc, cfg);
+    static Player player(g_index, cfg);
     g_player = &player;
     g_player->play();
 

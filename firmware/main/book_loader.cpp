@@ -87,6 +87,7 @@ std::optional<LoadedBook> load_first_book() {
     } else {
         std::vector<std::uint8_t> raw;
         if (!read_file(book, raw)) { ESP_LOGW(TAG, "read failed"); return std::nullopt; }
+        ESP_LOGI(TAG, "compiling %s (%u bytes)...", book.c_str(), (unsigned)raw.size());
         if (ends_with_ci(book, ".epub")) {
             idx = rsvp::epubToIndex(raw, size, mtime);
         } else {
@@ -105,8 +106,7 @@ std::optional<LoadedBook> load_first_book() {
 
     rsvp::CompiledIndex ci = rsvp::CompiledIndex::parse(idx);
     if (!ci.ok()) { ESP_LOGW(TAG, "index parse failed"); return std::nullopt; }
-    LoadedBook lb{ ci.toDocument(), ci.meta().title, ci.meta().author };
-    ESP_LOGI(TAG, "loaded \"%s\" by %s, %u words",
-             lb.title.c_str(), lb.author.c_str(), (unsigned)lb.doc.size());
-    return lb;
+    std::string title = ci.meta().title;
+    ESP_LOGI(TAG, "loaded \"%s\", %u words", title.c_str(), (unsigned)ci.wordCount());
+    return LoadedBook{ std::move(ci), std::move(title) };
 }
