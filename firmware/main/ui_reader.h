@@ -1,14 +1,22 @@
 #ifndef UI_READER_H
 #define UI_READER_H
 
+#include <stdbool.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// Show a "Loading..." screen and compile/parse the book in a background task; the
-// reader screen is built automatically once the book is ready (or the sample, on
-// failure). Call once at startup under the LVGL lock.
+// Show a "Loading..." screen and start compiling/parsing the book in a background
+// task. Call once at startup under the LVGL lock.
 void rsvp_loading_screen_create(void);
+
+// True once the background load has finished (book or sample is ready in g_index).
+bool rsvp_book_ready(void);
+
+// Drop the Loading screen and build the reader from the loaded index. Call from the
+// main task under the LVGL lock once rsvp_book_ready() returns true.
+void rsvp_build_reader_screen(void);
 
 #ifdef __cplusplus
 }

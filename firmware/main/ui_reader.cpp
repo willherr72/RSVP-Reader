@@ -260,15 +260,6 @@ void load_task(void*)
     vTaskDelete(nullptr);
 }
 
-// LVGL thread: once the load finishes, drop the Loading screen and build the reader.
-void loading_timer_cb(lv_timer_t* t)
-{
-    if (!g_load_done.load()) return;
-    if (g_loading_scr) { lv_obj_del(g_loading_scr); g_loading_scr = nullptr; }
-    build_reader(g_loaded_title);
-    lv_timer_del(t);
-}
-
 } // namespace
 
 extern "C" void rsvp_loading_screen_create(void)
@@ -293,5 +284,17 @@ extern "C" void rsvp_loading_screen_create(void)
     // needs a big stack (48KB fits the largest free internal block at this point).
     if (xTaskCreatePinnedToCore(load_task, "bookload", 48 * 1024, nullptr, 3, nullptr, 1) != pdPASS)
         ESP_LOGE("ui", "failed to create book-load task");
-    lv_timer_create(loading_timer_cb, 50, nullptr);
+    // app_main polls rsvp_book_ready(), then calls rsvp_build_reader_screen() to build the
+    // reader on the main task under the LVGL lock (where the loading screen was set up).
+}
+
+extern "C" bool rsvp_book_ready(void)
+{
+    return g_load_done.load();
+}
+
+extern "C" void rsvp_build_reader_screen(void)
+{
+    if (g_loading_scr) { lv_obj_del(g_loading_scr); g_loading_scr = nullptr; }
+    build_reader(g_loaded_title);
 }

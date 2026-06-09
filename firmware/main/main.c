@@ -353,11 +353,17 @@ void app_main(void)
     assert(lvgl_mux);
     xTaskCreatePinnedToCore(example_lvgl_port_task, "LVGL", LVGL_TASK_STACK_SIZE, NULL, LVGL_TASK_PRIORITY, NULL,0);
     xTaskCreatePinnedToCore(example_backlight_loop_task, "example_backlight_loop_task", 4 * 1024, NULL, 2, NULL,0); 
-    if (example_lvgl_lock(-1)) 
-    {   
-        rsvp_loading_screen_create();   /* Loading... -> book compiles in a task -> reader screen */
+    if (example_lvgl_lock(-1))
+    {
+        rsvp_loading_screen_create();   /* Loading... + spawn the background book-load task */
+        example_lvgl_unlock();
+    }
 
-        // Release the mutex
+    // Wait for the background load to finish, then build the reader on the main task.
+    while (!rsvp_book_ready()) vTaskDelay(pdMS_TO_TICKS(50));
+    if (example_lvgl_lock(-1))
+    {
+        rsvp_build_reader_screen();
         example_lvgl_unlock();
     }
 }
