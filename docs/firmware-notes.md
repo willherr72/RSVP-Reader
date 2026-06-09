@@ -71,10 +71,9 @@
   `.epub`/`.txt`, compile-and-caches a compiled index to `/sdcard/.rsvp/<name>.idx`
   (gated by `indexMatchesSource`), and the reader reads it (title shown top-left),
   falling back to the built-in sample on any failure.
-  - **Board specifics (found via on-card testing):** the SD bus is gated by a
-    **TCA9554 I/O expander** on I2C0 (GPIO48/47) — `sdcard_bsp` drives expander pin
-    **P1 low** before mounting (per Waveshare `04_SD_Card`). Cards >32 GB are
-    **exFAT** — see the exFAT build prerequisite above.
+  - **SD only needs exFAT** (no I/O-expander setup): the SD bus is powered by default,
+    so `sdcard_bsp` is a plain 1-line SDMMC mount. Cards >32 GB are **exFAT** — see the
+    exFAT build prerequisite above; that was the real cause of the early mount failures.
   - **Verified on-device:** Project Hail Mary (1.27 MB EPUB, **149,440 words**)
     stream-compiles in a background task behind a "Loading…" screen, caches to
     `/sdcard/.rsvp/`, and reads on demand; reboot hits the cache instantly (exFAT
@@ -84,7 +83,7 @@
     `Player`/reader pull words on demand via `CompiledIndex.at(i)` — peak RAM ~1–2 MB
     regardless of book size. The compile runs in a **dedicated 48 KB-stack task**
     (`load_task` in `ui_reader.cpp`); main task is back to 16 KB.
-  - ⚠️ **Two device-only gotchas that cost a long debug** (both invisible on host):
+  - ⚠️ **Three device-only gotchas that cost a long debug** (all invisible on host):
     - **miniz ↔ ESP32-S3 ROM symbol collision.** The mask ROM exports `tinfl_*`/`tdefl_*`
       from an older miniz with a different `tinfl_decompressor` layout; the linker bound
       our miniz's `tinfl_decompress` call to the ROM copy, so our 32 KB struct was read
@@ -94,6 +93,12 @@
     - **Inflate needs a big stack:** miniz's `tinfl_decompressor` is ~32 KB on the stack,
       so a 64 KB task stack won't fit the largest free internal block once LVGL is up
       (~52 KB); 48 KB does.
+    - **Don't init the TCA9554 I/O expander.** A speculative SD-power init (creating the
+      TCA9554 + driving one pin) was unnecessary (SD is powered by default) AND it cut
+      **LCD power** ~2-3 s after boot — the panel showed the Loading screen then went
+      fully dark (backlight off), regardless of UI. Removed entirely. If a future feature
+      genuinely needs that expander, drive *all* its pins to known-good levels (the panel
+      power/backlight likely shares it) rather than letting the driver reset it.
   - Resume-on-reopen + library/browse UI remain Phase 2.
 
 ## Next features (see docs/superpowers/specs/ + plans/)
