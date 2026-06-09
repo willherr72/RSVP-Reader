@@ -42,6 +42,7 @@ add_executable(rsvp_tests
 target_include_directories(rsvp_tests PRIVATE
     ${CORE_DIR}/include
     ${MINIZ_DIR}
+    ${MINIZ_DIR}/..        # third_party parent, so zipreader's "miniz/miniz.h" resolves
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 

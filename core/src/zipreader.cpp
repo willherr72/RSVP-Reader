@@ -1,5 +1,8 @@
 #include "rsvp/zipreader.hpp"
-#include "miniz.h"
+// Include via the "miniz/" subpath so this resolves to our vendored
+// third_party/miniz (which has the ZIP archive API) rather than ESP-IDF's
+// inflate-only esp_rom/include/miniz.h, which also matches a bare "miniz.h".
+#include "miniz/miniz.h"
 
 namespace rsvp {
 
