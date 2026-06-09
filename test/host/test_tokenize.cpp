@@ -74,3 +74,17 @@ TEST_CASE("tokenize: an all-closer token is not a sentence end") {
     CHECK(d.tokens[0].text == ")");
     CHECK_FALSE(d.tokens[0].has(FLAG_SENTENCE_END));
 }
+
+TEST_CASE("tokenizePlainTextInto emits identical tokens to tokenizePlainText") {
+    const std::string text = "Hello world.\n\nSecond para! Third \"quoted.\"\n\nEnd";
+    Document viaDoc = tokenizePlainText(text);
+    Document viaSink;
+    tokenizePlainTextInto(text, [&](const std::string& w, std::uint8_t f) {
+        viaSink.tokens.push_back(Token{w, f});
+    });
+    REQUIRE(viaSink.tokens.size() == viaDoc.tokens.size());
+    for (std::size_t i = 0; i < viaDoc.tokens.size(); ++i) {
+        CHECK(viaSink.tokens[i].text  == viaDoc.tokens[i].text);
+        CHECK(viaSink.tokens[i].flags == viaDoc.tokens[i].flags);
+    }
+}

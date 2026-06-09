@@ -1,4 +1,6 @@
 #include "rsvp/tokenize.hpp"
+#include <functional>
+#include <utility>
 
 namespace rsvp {
 
@@ -23,11 +25,16 @@ bool endsSentence(const std::string& w) {
 
 } // namespace
 
-Document tokenizePlainText(const std::string& text) {
-    Document doc;
+void tokenizePlainTextInto(const std::string& text,
+                           const std::function<void(const std::string&, std::uint8_t)>& sink) {
     const std::size_t n = text.size();
     std::size_t i = 0;
-    bool pendingParagraphBreak = false;  // a blank line was seen after the last emitted word
+    // One-token lookahead: a blank line flags FLAG_PARAGRAPH_END on the PRIOR word, so we
+    // hold the previous word until we know whether a blank line followed it.
+    std::string  prevWord;
+    std::uint8_t prevFlags = FLAG_NONE;
+    bool         havePrev = false;
+    bool pendingParagraphBreak = false;
     while (i < n) {
         // Skip whitespace; a gap containing >= 2 newlines is a blank line (paragraph break).
         bool sawNewline = false, blankLine = false;
@@ -35,21 +42,27 @@ Document tokenizePlainText(const std::string& text) {
             if (text[i] == '\n') { if (sawNewline) blankLine = true; sawNewline = true; }
             ++i;
         }
-        if (blankLine && !doc.tokens.empty()) pendingParagraphBreak = true;
+        if (blankLine && havePrev) pendingParagraphBreak = true;
         if (i >= n) break;   // trailing whitespace at EOF: a pending break has no next word -> dropped
         // Read one word (maximal run of non-whitespace).
         const std::size_t start = i;
         while (i < n && !isSpace(static_cast<unsigned char>(text[i]))) ++i;
         std::string word = text.substr(start, i - start);
         // A blank line preceded this word -> the previous word ended its paragraph.
-        if (pendingParagraphBreak && !doc.tokens.empty()) {
-            doc.tokens.back().flags |= FLAG_PARAGRAPH_END;
-            pendingParagraphBreak = false;
-        }
-        std::uint8_t flags = FLAG_NONE;
-        if (endsSentence(word)) flags |= FLAG_SENTENCE_END;
-        doc.tokens.push_back(Token{word, flags});
+        if (pendingParagraphBreak && havePrev) { prevFlags |= FLAG_PARAGRAPH_END; pendingParagraphBreak = false; }
+        if (havePrev) sink(prevWord, prevFlags);
+        prevWord  = std::move(word);
+        prevFlags = endsSentence(prevWord) ? FLAG_SENTENCE_END : FLAG_NONE;
+        havePrev  = true;
     }
+    if (havePrev) sink(prevWord, prevFlags);
+}
+
+Document tokenizePlainText(const std::string& text) {
+    Document doc;
+    tokenizePlainTextInto(text, [&](const std::string& w, std::uint8_t f) {
+        doc.tokens.push_back(Token{w, f});
+    });
     return doc;
 }
 
