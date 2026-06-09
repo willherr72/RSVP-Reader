@@ -100,3 +100,21 @@ TEST_CASE("indexMatchesSource compares the recorded source stats") {
     std::vector<std::uint8_t> bad = {'X','X','X','X'};
     CHECK_FALSE(indexMatchesSource(bad, 11, 42)); // bad magic
 }
+
+TEST_CASE("readIndexHeader pulls title/author/wordCount without full parse") {
+    Document doc; doc.tokens = { Token{"a",FLAG_NONE}, Token{"b",FLAG_NONE}, Token{"c",FLAG_NONE} };
+    DocMeta m; m.title = "Project Hail Mary"; m.author = "Andy Weir";
+    auto bytes = serializeIndex(doc, m, {});
+
+    IndexHeader h = readIndexHeader(bytes);
+    REQUIRE(h.ok);
+    CHECK(h.title == "Project Hail Mary");
+    CHECK(h.author == "Andy Weir");
+    CHECK(h.wordCount == 3);
+}
+
+TEST_CASE("readIndexHeader fails cleanly on short/garbage input") {
+    CHECK_FALSE(readIndexHeader({}).ok);
+    CHECK_FALSE(readIndexHeader({'R','S','V','I'}).ok);
+    CHECK_FALSE(readIndexHeader(std::vector<std::uint8_t>(10, 0xFF)).ok);
+}

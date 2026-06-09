@@ -57,4 +57,15 @@ private:
 bool indexMatchesSource(const std::vector<std::uint8_t>& bytes,
                         std::uint32_t sourceSize, std::uint32_t sourceMtime);
 
+// Lightweight metadata read for fast library listing: parses ONLY the fixed header
+// (title, author, word count) without decoding the token stream. ok=false on bad
+// magic/version/truncation.
+struct IndexHeader {
+    std::string   title;
+    std::string   author;
+    std::uint32_t wordCount = 0;
+    bool          ok = false;
+};
+IndexHeader readIndexHeader(const std::vector<std::uint8_t>& bytes);
+
 } // namespace rsvp

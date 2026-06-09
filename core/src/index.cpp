@@ -112,4 +112,25 @@ bool indexMatchesSource(const std::vector<std::uint8_t>& b,
     return recSize == sourceSize && recMtime == sourceMtime;
 }
 
+IndexHeader readIndexHeader(const std::vector<std::uint8_t>& b) {
+    IndexHeader h;
+    std::size_t off = 0;
+    auto need = [&](std::size_t k) { return off + k <= b.size(); };
+    if (!need(4) || b[0] != 'R' || b[1] != 'S' || b[2] != 'V' || b[3] != 'I') return h;
+    off = 4;
+    if (!need(2) || getU16(b, off) != kVersion) return h;   // version (advances off)
+    if (!need(2)) return h; getU16(b, off);                 // flags
+    if (!need(4)) return h; getU32(b, off);                 // sourceSize
+    if (!need(4)) return h; getU32(b, off);                 // sourceMtime
+    if (!need(4)) return h; h.wordCount = getU32(b, off);
+    if (!need(4)) return h; getU32(b, off);                 // chapterCount
+    if (!need(4)) return h; getU32(b, off);                 // seekInterval
+    if (!need(2)) return h; const std::uint16_t tl = getU16(b, off);
+    if (!need(tl)) return h; h.title.assign(b.begin() + off, b.begin() + off + tl); off += tl;
+    if (!need(2)) return h; const std::uint16_t al = getU16(b, off);
+    if (!need(al)) return h; h.author.assign(b.begin() + off, b.begin() + off + al); off += al;
+    h.ok = true;
+    return h;
+}
+
 } // namespace rsvp
