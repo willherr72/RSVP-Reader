@@ -141,12 +141,38 @@ static bool     s_touch_was_pressed = false;
 
 static esp_lcd_touch_handle_t g_tp = NULL;
 
+// Touch is sampled in its own ~100 Hz task so the latest finger state is always
+// fresh regardless of LVGL render load; the indev read_cb just copies this
+// snapshot. The spinlock guards the cross-core (task vs LVGL) read/write.
+static portMUX_TYPE      g_touch_mux     = portMUX_INITIALIZER_UNLOCKED;
+static volatile bool     g_touch_pressed = false;
+static volatile uint16_t g_touch_x       = 0;
+static volatile uint16_t g_touch_y       = 0;
+
+static void touch_sample_task(void *arg)
+{
+    for (;;) {
+        uint16_t x = 0, y = 0;
+        uint8_t  cnt = 0;
+        esp_lcd_touch_read_data(g_tp);
+        bool pressed = esp_lcd_touch_get_coordinates(g_tp, &x, &y, NULL, &cnt, 1) && cnt > 0;
+        taskENTER_CRITICAL(&g_touch_mux);
+        g_touch_pressed = pressed;
+        if (pressed) { g_touch_x = x; g_touch_y = y; }
+        taskEXIT_CRITICAL(&g_touch_mux);
+        vTaskDelay(pdMS_TO_TICKS(10));   // ~100 Hz
+    }
+}
+
 static void TouchInputReadCallback(lv_indev_t * indev, lv_indev_data_t *indevData)
 {
-    uint16_t x = 0, y = 0;
-    uint8_t  cnt = 0;
-    esp_lcd_touch_read_data(g_tp);
-    bool pressed_now = esp_lcd_touch_get_coordinates(g_tp, &x, &y, NULL, &cnt, 1) && cnt > 0;
+    bool pressed_now;
+    uint16_t x, y;
+    taskENTER_CRITICAL(&g_touch_mux);
+    pressed_now = g_touch_pressed;
+    x = g_touch_x;
+    y = g_touch_y;
+    taskEXIT_CRITICAL(&g_touch_mux);
 
     // DEBUG instrumentation: read-rate + press edges over the serial console.
     s_touch_reads++;
@@ -321,6 +347,8 @@ void app_main(void)
         .flags = { .swap_xy = 1, .mirror_x = 0, .mirror_y = 0 },
     };
     ESP_ERROR_CHECK(esp_lcd_touch_new_i2c_axs15231b(tp_io, &tp_cfg, &g_tp));
+    lv_timer_set_period(lv_indev_get_read_timer(touch_indev), 10);  // ~100 Hz indev ceiling
+    xTaskCreatePinnedToCore(touch_sample_task, "touch", 4 * 1024, NULL, 3, NULL, 1);
 
     esp_timer_create_args_t lvgl_tick_timer_args = {};
     lvgl_tick_timer_args.callback = &example_increase_lvgl_tick;
