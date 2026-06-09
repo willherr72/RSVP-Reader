@@ -151,16 +151,31 @@ static volatile uint16_t g_touch_y       = 0;
 
 static void touch_sample_task(void *arg)
 {
+    int release_debounce = 0;
     for (;;) {
         uint16_t x = 0, y = 0;
         uint8_t  cnt = 0;
         esp_lcd_touch_read_data(g_tp);
-        bool pressed = esp_lcd_touch_get_coordinates(g_tp, &x, &y, NULL, &cnt, 1) && cnt > 0;
+        bool raw = esp_lcd_touch_get_coordinates(g_tp, &x, &y, NULL, &cnt, 1) && cnt > 0;
+
+        // Bridge brief touch dropouts during a finger drag: the AXS15231B reports
+        // no-touch for a few samples mid-motion, which would otherwise fragment one
+        // swipe into many tiny taps. Hold "pressed" for up to ~80ms after the last
+        // real reading; only a real reading updates the published position.
+        bool pressed;
+        if (raw) {
+            release_debounce = 8;            // ~80ms at 100Hz
+            pressed = true;
+        } else {
+            pressed = (release_debounce > 0);
+            if (release_debounce > 0) release_debounce--;
+        }
+
         taskENTER_CRITICAL(&g_touch_mux);
         g_touch_pressed = pressed;
-        if (pressed) { g_touch_x = x; g_touch_y = y; }
+        if (raw) { g_touch_x = x; g_touch_y = y; }
         taskEXIT_CRITICAL(&g_touch_mux);
-        vTaskDelay(pdMS_TO_TICKS(10));   // ~100 Hz
+        vTaskDelay(pdMS_TO_TICKS(10));       // ~100 Hz
     }
 }
 

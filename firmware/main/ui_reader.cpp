@@ -9,6 +9,7 @@
 #include "rsvp/player.hpp"
 #include "rsvp/orp.hpp"
 #include "rsvp/pacing.hpp"
+#include "rsvp/gesture.hpp"
 
 #include <cstdio>
 
@@ -97,25 +98,36 @@ void do_prev_sentence()
     refresh_word();
 }
 
-// DIAGNOSTIC: count press/release events and record the last delta, to detect whether the
-// panel bounces (multiple press/release per physical touch) — the suspected root cause.
+// Tap = play/pause, swipe up/down = WPM +/-25, swipe left/right = sentence.
+// Press records the start point; release classifies the delta. (The gesture log
+// is temporary verification scaffolding, removed in the instrumentation cleanup.)
 void touch_event_cb(lv_event_t *e)
 {
     lv_indev_t *indev = lv_indev_active();
-    if (indev == nullptr) return;
+    if (indev == nullptr || g_player == nullptr) return;
     const lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_PRESSED) {
-        g_pc++;
         lv_indev_get_point(indev, &g_press_pt);
-        ESP_LOGI(TAG, "evt PRESSED #%d at (%d,%d)", g_pc,
-                 static_cast<int>(g_press_pt.x), static_cast<int>(g_press_pt.y));
-    } else if (code == LV_EVENT_RELEASED) {
-        g_rc++;
-        lv_point_t p;
-        lv_indev_get_point(indev, &p);
-        g_ldx = static_cast<int>(p.x) - static_cast<int>(g_press_pt.x);
-        g_ldy = static_cast<int>(p.y) - static_cast<int>(g_press_pt.y);
-        ESP_LOGI(TAG, "evt RELEASED #%d dx=%d dy=%d", g_rc, g_ldx, g_ldy);
+        return;
+    }
+    if (code != LV_EVENT_RELEASED) return;
+
+    lv_point_t p;
+    lv_indev_get_point(indev, &p);
+    const int dx = static_cast<int>(p.x) - static_cast<int>(g_press_pt.x);
+    const int dy = static_cast<int>(p.y) - static_cast<int>(g_press_pt.y);
+    const Gesture g = classifyGesture(dx, dy, 25);
+
+    static const char *kNames[] = {"None", "Tap", "SwipeUp", "SwipeDown", "SwipeLeft", "SwipeRight"};
+    ESP_LOGI(TAG, "gesture=%s dx=%d dy=%d", kNames[static_cast<int>(g)], dx, dy);
+
+    switch (g) {
+        case Gesture::Tap:        g_player->togglePlay(); update_status(); break;
+        case Gesture::SwipeUp:    set_wpm(g_wpm + 25); break;   // up = faster
+        case Gesture::SwipeDown:  set_wpm(g_wpm - 25); break;
+        case Gesture::SwipeLeft:  do_prev_sentence(); break;
+        case Gesture::SwipeRight: do_next_sentence(); break;
+        case Gesture::None:       break;
     }
 }
 
