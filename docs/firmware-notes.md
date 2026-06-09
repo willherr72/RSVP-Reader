@@ -33,17 +33,29 @@
 ## Status
 - ✅ Live reader works on hardware: word stream at the set WPM, red ORP letter
   pinned to the focal column, prev/next flankers, battery/clock + wpm/%.
-- ✅ Touch **coordinate** transform fixed: the AXS15231B raw coordinates are
-  already landscape-oriented (X 0–640, Y 0–172), so the demo's ROT_90
-  swap/clamp was wrong — pass them through directly (see `TouchInputReadCallback`).
-- ⚠️ Touch **input is intermittent**: the demo's hand-rolled I2C read
-  (`read_touchpad_cmd = {0xb5,0xab,0xa5,0x5a,...}`) misses quick taps and only
-  sometimes registers a swipe, so tap/swipe controls are unreliable.
-  `ui_reader.cpp` currently carries on-screen `P=/R=/dx=/dy=` debug counters used
-  to diagnose this (a single tap produced **no** press/release events).
-  **Next step:** replace the hand-rolled read with the proper `esp_lcd_touch`
-  AXS15231B driver (already pulled in as a managed_component) for reliable input,
-  then re-enable tap=play/pause, swipe-up/down=WPM, swipe-left/right=sentence.
+- ✅ Touch **input is reliable; gesture controls live**: tap = play/pause,
+  swipe up/down = WPM ±25 (clamped 100–800), swipe left/right = sentence
+  (swipe-left = previous, swipe-right = next). See spec/plan dated 2026-06-09.
+  - **Root cause of the old intermittent touch** (confirmed on-device, not the
+    hand-rolled read — that worked fine in the demo): the touch indev was polled
+    on LVGL's single render thread, and continuous full-frame redraws (a 30fps
+    debug label + the `LV_USE_PERF_MONITOR` overlay + FULL-mode QSPI flush)
+    starved the poll to 8–15 Hz, where LVGL's pointer state machine corrupted
+    presses into merged/garbage gestures.
+  - **Fix:** (1) cut render load — `LV_USE_PERF_MONITOR`/`SYSMON` off, redraw only
+    on word change; (2) drive touch via `esp_lcd_touch_new_i2c_axs15231b`
+    (declared in `esp_lcd_axs15231b.h`, **not** a separate touch header; the
+    `…CONFIG_EX` macro is buggy — set `scl_speed_hz` on the struct) on the shared
+    I2C bus; (3) sample in a dedicated ~100 Hz task into a spinlock snapshot the
+    LVGL read_cb copies, and lower `CONFIG_LV_DEF_REFR_PERIOD` 33→10 ms → ~64 Hz
+    indev, 0 merges; (4) bridge brief mid-drag touch dropouts (~80 ms hold) so a
+    swipe doesn't fragment into taps; (5) classify via host-tested
+    `core/rsvp/gesture.hpp`.
+  - **Coordinates:** feed LVGL **logical** (pre-rotation 172×640) coords via the
+    driver's `swap_xy`; LVGL's 90° rotation maps them to the panel. The touch
+    **X-axis is currently screen-relative (mirrored vs. physical)** — invisible
+    for the gesture-only reader, but **set `mirror_y=1`** in the `esp_lcd_touch_config_t`
+    when adding position-dependent UI (library/settings buttons) so taps line up.
 
 ## Next features (see docs/superpowers/specs/ + plans/)
 SD card mount + real EPUB/TXT loading (register the rest of `core` — index/

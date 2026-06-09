@@ -130,15 +130,6 @@ static void example_lvgl_flush_cb(lv_display_t * disp, const lv_area_t * area, u
 #endif
 }
 
-// --- DEBUG: touch-starvation diagnosis (remove once root cause is confirmed) ---
-// Tallies how often LVGL actually polls the touch read each second, alongside the
-// active redraw phase. If reads/s collapses while the 30fps debug redraw runs, the
-// single-threaded LVGL task is starving the indev poll — the suspected root cause.
-static uint32_t s_touch_reads = 0;
-static uint32_t s_touch_presses = 0;
-static int64_t  s_touch_log_us = 0;
-static bool     s_touch_was_pressed = false;
-
 static esp_lcd_touch_handle_t g_tp = NULL;
 
 // Touch is sampled in its own ~100 Hz task so the latest finger state is always
@@ -188,22 +179,6 @@ static void TouchInputReadCallback(lv_indev_t * indev, lv_indev_data_t *indevDat
     x = g_touch_x;
     y = g_touch_y;
     taskEXIT_CRITICAL(&g_touch_mux);
-
-    // DEBUG instrumentation: read-rate + press edges over the serial console.
-    s_touch_reads++;
-    if (pressed_now) s_touch_presses++;
-    if (pressed_now && !s_touch_was_pressed) {
-        ESP_LOGI(TAG, "touch PRESS edge x=%u y=%u", (unsigned)x, (unsigned)y);
-    }
-    s_touch_was_pressed = pressed_now;
-    int64_t now_us = esp_timer_get_time();
-    if (now_us - s_touch_log_us >= 1000000) {
-        ESP_LOGI(TAG, "touch reads/s=%u presses/s=%u",
-                 (unsigned)s_touch_reads, (unsigned)s_touch_presses);
-        s_touch_reads = 0;
-        s_touch_presses = 0;
-        s_touch_log_us = now_us;
-    }
 
     if (pressed_now) {
         indevData->state = LV_INDEV_STATE_PRESSED;

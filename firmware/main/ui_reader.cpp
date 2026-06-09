@@ -2,9 +2,6 @@
 
 #include "lvgl.h"
 
-#include "esp_log.h"
-#include "esp_timer.h"
-
 #include "rsvp/tokenize.hpp"
 #include "rsvp/player.hpp"
 #include "rsvp/orp.hpp"
@@ -16,8 +13,6 @@
 using namespace rsvp;
 
 namespace {
-
-const char *TAG = "ui_reader";
 
 Document    g_doc;
 Player*     g_player  = nullptr;
@@ -35,7 +30,6 @@ lv_obj_t *g_tick_top = nullptr;
 lv_obj_t *g_tick_bot = nullptr;
 
 lv_point_t g_press_pt = {0, 0};
-int g_pc = 0, g_rc = 0, g_ldx = 0, g_ldy = 0;  // DEBUG: event counters + last delta
 
 // Bottom status line: pause glyph (when paused) + wpm + progress %.
 void update_status()
@@ -99,8 +93,7 @@ void do_prev_sentence()
 }
 
 // Tap = play/pause, swipe up/down = WPM +/-25, swipe left/right = sentence.
-// Press records the start point; release classifies the delta. (The gesture log
-// is temporary verification scaffolding, removed in the instrumentation cleanup.)
+// Press records the start point; release classifies the delta.
 void touch_event_cb(lv_event_t *e)
 {
     lv_indev_t *indev = lv_indev_active();
@@ -118,15 +111,14 @@ void touch_event_cb(lv_event_t *e)
     const int dy = static_cast<int>(p.y) - static_cast<int>(g_press_pt.y);
     const Gesture g = classifyGesture(dx, dy, 25);
 
-    static const char *kNames[] = {"None", "Tap", "SwipeUp", "SwipeDown", "SwipeLeft", "SwipeRight"};
-    ESP_LOGI(TAG, "gesture=%s dx=%d dy=%d", kNames[static_cast<int>(g)], dx, dy);
-
     switch (g) {
         case Gesture::Tap:        g_player->togglePlay(); update_status(); break;
         case Gesture::SwipeUp:    set_wpm(g_wpm + 25); break;   // up = faster
         case Gesture::SwipeDown:  set_wpm(g_wpm - 25); break;
-        case Gesture::SwipeLeft:  do_prev_sentence(); break;
-        case Gesture::SwipeRight: do_next_sentence(); break;
+        // Touch X is screen-mirrored vs. the held device (see firmware-notes), so a
+        // physical left-swipe classifies as SwipeRight. Map so physical left = previous.
+        case Gesture::SwipeLeft:  do_next_sentence(); break;
+        case Gesture::SwipeRight: do_prev_sentence(); break;
         case Gesture::None:       break;
     }
 }
