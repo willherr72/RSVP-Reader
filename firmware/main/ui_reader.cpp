@@ -28,6 +28,20 @@ lv_obj_t *g_wpm_lbl  = nullptr;
 lv_obj_t *g_tick_top = nullptr;
 lv_obj_t *g_tick_bot = nullptr;
 
+lv_point_t g_press_pt = {0, 0};
+int g_pc = 0, g_rc = 0, g_ldx = 0, g_ldy = 0;  // DEBUG: event counters + last delta
+
+// Bottom status line: pause glyph (when paused) + wpm + progress %.
+void update_status()
+{
+    if (g_player == nullptr) return;
+    char buf[48];
+    const char *sym = g_player->isPlaying() ? "" : LV_SYMBOL_PAUSE "  ";
+    std::snprintf(buf, sizeof(buf), "%s%d wpm  .  %d%%", sym, g_wpm,
+                  static_cast<int>(g_player->progress() * 100.0 + 0.5));
+    lv_label_set_text(g_wpm_lbl, buf);
+}
+
 // Re-render the current word: split at the ORP, pin the red letter to screen centre,
 // flank pre/post + prev/next words, and reposition the focal ticks over the ORP letter.
 void refresh_word()
@@ -50,10 +64,51 @@ void refresh_word()
     lv_obj_align_to(g_tick_top, g_orp, LV_ALIGN_OUT_TOP_MID,    0, -10);
     lv_obj_align_to(g_tick_bot, g_orp, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
 
-    char buf[32];
-    std::snprintf(buf, sizeof(buf), "%d wpm . %d%%", g_wpm,
-                  static_cast<int>(g_player->progress() * 100.0 + 0.5));
-    lv_label_set_text(g_wpm_lbl, buf);
+    update_status();
+}
+
+void set_wpm(int w)
+{
+    if (w < 100) w = 100;
+    if (w > 800) w = 800;
+    g_wpm = w;
+    PacingConfig cfg = g_player->config();
+    cfg.wpm = g_wpm;
+    g_player->setConfig(cfg);
+    update_status();
+}
+
+void do_next_sentence()
+{
+    g_player->nextSentence();
+    g_lastIdx = g_player->index();
+    refresh_word();
+}
+
+void do_prev_sentence()
+{
+    g_player->prevSentence();
+    g_lastIdx = g_player->index();
+    refresh_word();
+}
+
+// DIAGNOSTIC: count press/release events and record the last delta, to detect whether the
+// panel bounces (multiple press/release per physical touch) — the suspected root cause.
+void touch_event_cb(lv_event_t *e)
+{
+    lv_indev_t *indev = lv_indev_active();
+    if (indev == nullptr) return;
+    const lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_PRESSED) {
+        g_pc++;
+        lv_indev_get_point(indev, &g_press_pt);
+    } else if (code == LV_EVENT_RELEASED) {
+        g_rc++;
+        lv_point_t p;
+        lv_indev_get_point(indev, &p);
+        g_ldx = static_cast<int>(p.x) - static_cast<int>(g_press_pt.x);
+        g_ldy = static_cast<int>(p.y) - static_cast<int>(g_press_pt.y);
+    }
 }
 
 void tick_cb(lv_timer_t *timer)
@@ -69,6 +124,10 @@ void tick_cb(lv_timer_t *timer)
         g_lastIdx = g_player->index();
         refresh_word();
     }
+    // DEBUG: show press/release counts + last delta on the bottom line.
+    char dbg[48];
+    std::snprintf(dbg, sizeof(dbg), "P=%d R=%d dx=%d dy=%d", g_pc, g_rc, g_ldx, g_ldy);
+    lv_label_set_text(g_wpm_lbl, dbg);
 }
 
 lv_obj_t *make_label(lv_obj_t *parent, lv_color_t color, const lv_font_t *font)
@@ -145,4 +204,12 @@ extern "C" void rsvp_reading_screen_create(void)
 
     refresh_word();
     lv_timer_create(tick_cb, 33, nullptr);
+
+    // transparent full-screen touch layer on top: tap / swipe via press-release delta
+    lv_obj_t *touch = lv_obj_create(g_scr);
+    lv_obj_remove_style_all(touch);
+    lv_obj_set_size(touch, LV_PCT(100), LV_PCT(100));
+    lv_obj_add_flag(touch, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(touch, touch_event_cb, LV_EVENT_PRESSED, nullptr);
+    lv_obj_add_event_cb(touch, touch_event_cb, LV_EVENT_RELEASED, nullptr);
 }

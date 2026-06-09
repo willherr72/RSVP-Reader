@@ -138,15 +138,15 @@ static void TouchInputReadCallback(lv_indev_t * indev, lv_indev_data_t *indevDat
     uint16_t pointY;
     pointX = (((uint16_t)buff[2] & 0x0f) << 8) | (uint16_t)buff[3];
     pointY = (((uint16_t)buff[4] & 0x0f) << 8) | (uint16_t)buff[5];
-    //ESP_LOGI("Touch","%d,%d",buff[0],buff[1]);
     if (buff[1]>0 && buff[1]<5)
     {
         indevData->state = LV_INDEV_STATE_PRESSED;
 #if (Rotated == USER_DISP_ROT_90)
-        if(pointX > EXAMPLE_LCD_H_RES) pointX = EXAMPLE_LCD_H_RES;
-        if(pointY > EXAMPLE_LCD_V_RES) pointY = EXAMPLE_LCD_V_RES;
-        indevData->point.x = (EXAMPLE_LCD_H_RES - pointX);
-        indevData->point.y = (EXAMPLE_LCD_V_RES - pointY); 
+        // Raw touch is already landscape-oriented: X in [0,~640], Y in [0,~172].
+        if(pointX > EXAMPLE_LCD_V_RES) pointX = EXAMPLE_LCD_V_RES;
+        if(pointY > EXAMPLE_LCD_H_RES) pointY = EXAMPLE_LCD_H_RES;
+        indevData->point.x = pointX;
+        indevData->point.y = pointY;
 #else
         if(pointX > EXAMPLE_LCD_V_RES) pointX = EXAMPLE_LCD_V_RES;
         if(pointY > EXAMPLE_LCD_H_RES) pointY = EXAMPLE_LCD_H_RES;

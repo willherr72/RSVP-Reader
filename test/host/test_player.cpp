@@ -144,3 +144,18 @@ TEST_CASE("prevSentence goes to current start, then previous start") {
     p.prevSentence();            CHECK(p.index() == 0); // clamp at first
     p.seek(5); p.prevSentence(); CHECK(p.index() == 3); // from "End" -> sentence 2 start
 }
+
+TEST_CASE("Player setConfig adjusts pacing") {
+    Document d = plainDoc({"one", "two"});
+    Player p(d, PacingConfig{});         // 300 wpm -> 200 ms/word
+    CHECK(p.config().wpm == 300);
+    PacingConfig slow = p.config();
+    slow.wpm = 150;                      // 400 ms/word
+    p.setConfig(slow);
+    CHECK(p.config().wpm == 150);
+    p.play();
+    CHECK(p.tick(399) == 0);             // 399 < 400 ms, still on word 0
+    CHECK(p.index() == 0);
+    CHECK(p.tick(1) == 1);               // reaches 400 ms -> advance
+    CHECK(p.index() == 1);
+}

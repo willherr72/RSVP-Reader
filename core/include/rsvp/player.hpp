@@ -25,6 +25,11 @@ public:
     const Token& current() const { return doc_.tokens[index_]; }
     double       progress() const;
 
+    // Pacing config access — setConfig adjusts pacing live (e.g. WPM) and takes
+    // effect from the current word's remaining time onward.
+    const PacingConfig& config() const { return cfg_; }
+    void setConfig(const PacingConfig& cfg) { cfg_ = cfg; }
+
     // Advance the clock by dtMs. While playing, advances through any tokens whose
     // duration has elapsed. Returns the number of index advances (tokens moved TO);
     // completing the final token is NOT counted — use isFinished() to detect the end.
