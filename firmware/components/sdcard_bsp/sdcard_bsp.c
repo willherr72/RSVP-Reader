@@ -2,6 +2,9 @@
 #include "esp_vfs_fat.h"
 #include "sdmmc_cmd.h"
 #include "driver/sdmmc_host.h"
+#include "driver/gpio.h"
+#include "driver/i2c_master.h"
+#include "esp_io_expander_tca9554.h"
 #include "esp_log.h"
 
 #define SDMMC_CLK_PIN   GPIO_NUM_41
@@ -12,8 +15,40 @@
 static const char *TAG = "sdcard_bsp";
 static sdmmc_card_t *s_card = NULL;
 
+// The board gates the SD card through a TCA9554 I/O expander on I2C0 (GPIO48/47):
+// pin P1 must be driven low to enable the SD bus before mounting. Without it the
+// SDMMC reads nothing and f_mount returns FR_NO_FILESYSTEM (13). Matches the
+// Waveshare 04_SD_Card example. (When RTC/IMU/battery arrive they share this I2C0
+// bus + expander — factor this into a shared io-expander bring-up then.)
+static void sd_power_enable(void)
+{
+    i2c_master_bus_handle_t bus = NULL;
+    i2c_master_bus_config_t cfg = {
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .i2c_port = I2C_NUM_0,
+        .scl_io_num = GPIO_NUM_48,
+        .sda_io_num = GPIO_NUM_47,
+        .glitch_ignore_cnt = 7,
+        .flags = { .enable_internal_pullup = true },
+    };
+    if (i2c_new_master_bus(&cfg, &bus) != ESP_OK) {
+        ESP_LOGW(TAG, "TCA9554 I2C0 bus init failed");
+        return;
+    }
+    esp_io_expander_handle_t io = NULL;
+    if (esp_io_expander_new_i2c_tca9554(bus, ESP_IO_EXPANDER_I2C_TCA9554_ADDRESS_000, &io) != ESP_OK) {
+        ESP_LOGW(TAG, "TCA9554 init failed");
+        return;
+    }
+    esp_io_expander_set_dir(io, IO_EXPANDER_PIN_NUM_1, IO_EXPANDER_OUTPUT);
+    esp_io_expander_set_level(io, IO_EXPANDER_PIN_NUM_1, 0);
+    ESP_LOGI(TAG, "SD enabled via TCA9554 P1");
+}
+
 void sdcard_init(void)
 {
+    sd_power_enable();
+
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
         .format_if_mount_failed = false,
         .max_files = 5,

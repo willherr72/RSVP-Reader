@@ -18,6 +18,12 @@
   ```
   (`idf.py --version` prints `v1.0.3` from the idf-exe shim — harmless; the real
   IDF version is 5.5.2.)
+- **exFAT build prerequisite (IDF edit):** SD cards >32 GB are exFAT, which ESP-IDF's
+  FatFs disables by default. Set `FF_FS_EXFAT 1` in
+  `…/esp-idf/components/fatfs/src/ffconf.h` (it's a hardcoded `0`, no Kconfig) and
+  enable `CONFIG_FATFS_USE_LABEL=y` (in `sdkconfig.defaults`) so the exFAT label path
+  compiles. **This ffconf edit is not in the repo — re-apply it after any IDF
+  reinstall.** (exFAT carries Microsoft patent terms; that's why Espressif ships it off.)
 
 ## Project layout
 - `core/` — host-tested C++ engine, also registered as an ESP-IDF component via
@@ -65,9 +71,17 @@
   `.epub`/`.txt`, compile-and-caches a compiled index to `/sdcard/.rsvp/<name>.idx`
   (gated by `indexMatchesSource`), and the reader reads it (title shown top-left),
   falling back to the built-in sample on any failure.
-  - **Verified:** host tests + on-device **no-card fallback** (mount fails
-    gracefully → sample). **Pending a test card:** the real load/cache/title/read
-    path. Resume-on-reopen + the library/browse UI are Phase 2.
+  - **Board specifics (found via on-card testing):** the SD bus is gated by a
+    **TCA9554 I/O expander** on I2C0 (GPIO48/47) — `sdcard_bsp` drives expander pin
+    **P1 low** before mounting (per Waveshare `04_SD_Card`). Cards >32 GB are
+    **exFAT** — see the exFAT build prerequisite above.
+  - **Verified on-device:** mount + exFAT (64 GB card), book found, parser correct
+    (host: 1.27 MB EPUB → 149 K words). Host tests green; no-card fallback works.
+  - ⚠️ **Known limitation (fix in progress):** a full novel OOMs during compile —
+    `epubToIndex` materializes the whole book as a ~5 MB `Document` in PSRAM
+    (only ~6.4 MB free), `bad_alloc` → `-fno-exceptions` → BREAK boot-loop. Fix:
+    stream the compile + read on-demand from the compact `CompiledIndex` (own
+    spec/plan). Resume-on-reopen + library/browse UI remain Phase 2.
 
 ## Next features (see docs/superpowers/specs/ + plans/)
 **Power button / shutdown** (sub-project B — the device can't power off yet; PWR
