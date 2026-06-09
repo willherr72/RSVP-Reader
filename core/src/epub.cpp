@@ -4,6 +4,7 @@
 #include "rsvp/htmltext.hpp"
 #include "rsvp/tokenize.hpp"
 #include "rsvp/index.hpp"
+#include "rsvp/indexbuilder.hpp"
 #include <string>
 #include <vector>
 
@@ -45,25 +46,31 @@ std::vector<std::uint8_t> epubToIndex(const std::vector<std::uint8_t>& epub,
     if (!readZipEntry(epub, opfPath, opfXml)) return {};
     const OpfData opf = parseOpf(opfXml);
 
-    Document doc;
-    std::vector<Chapter> chapters;
-    for (const std::string& href : opf.spineHrefs) {
-        std::string xhtml;
-        if (!readZipEntry(epub, resolveHref(opfPath, href), xhtml)) continue;
-        Document part = tokenizePlainText(htmlToText(xhtml));
-        if (part.tokens.empty()) continue;
-        if (!doc.tokens.empty()) part.tokens.front().flags |= FLAG_CHAPTER_START;
-        chapters.push_back(Chapter{static_cast<std::uint32_t>(doc.tokens.size()), std::string()});
-        for (Token& t : part.tokens) doc.tokens.push_back(std::move(t));
-    }
-    if (doc.tokens.empty()) return {};
-
     DocMeta meta;
     meta.title       = opf.title;
     meta.author      = opf.author;
     meta.sourceSize  = sourceSize;
     meta.sourceMtime = sourceMtime;
-    return serializeIndex(doc, meta, chapters);
+
+    IndexBuilder ib(meta);
+    bool anyTokens = false;                          // a previous chapter produced tokens
+    for (const std::string& href : opf.spineHrefs) {
+        std::string xhtml;
+        if (!readZipEntry(epub, resolveHref(opfPath, href), xhtml)) continue;
+        std::string text = htmlToText(xhtml);
+        xhtml.clear(); xhtml.shrink_to_fit();
+        const bool markChapterStart = anyTokens;     // not the very first non-empty chapter
+        bool chapterHasTokens = false;
+        bool firstOfChapter   = true;
+        tokenizePlainTextInto(text, [&](const std::string& w, std::uint8_t f) {
+            if (!chapterHasTokens) { ib.startChapter(); chapterHasTokens = true; anyTokens = true; }
+            if (firstOfChapter && markChapterStart) f |= FLAG_CHAPTER_START;
+            firstOfChapter = false;
+            ib.addToken(w, f);
+        });
+    }
+    if (!anyTokens) return {};
+    return ib.finish();
 }
 
 } // namespace rsvp
