@@ -2,6 +2,9 @@
 
 #include "lvgl.h"
 
+#include "esp_log.h"
+#include "esp_timer.h"
+
 #include "rsvp/tokenize.hpp"
 #include "rsvp/player.hpp"
 #include "rsvp/orp.hpp"
@@ -12,6 +15,8 @@
 using namespace rsvp;
 
 namespace {
+
+const char *TAG = "ui_reader";
 
 Document    g_doc;
 Player*     g_player  = nullptr;
@@ -102,12 +107,15 @@ void touch_event_cb(lv_event_t *e)
     if (code == LV_EVENT_PRESSED) {
         g_pc++;
         lv_indev_get_point(indev, &g_press_pt);
+        ESP_LOGI(TAG, "evt PRESSED #%d at (%d,%d)", g_pc,
+                 static_cast<int>(g_press_pt.x), static_cast<int>(g_press_pt.y));
     } else if (code == LV_EVENT_RELEASED) {
         g_rc++;
         lv_point_t p;
         lv_indev_get_point(indev, &p);
         g_ldx = static_cast<int>(p.x) - static_cast<int>(g_press_pt.x);
         g_ldy = static_cast<int>(p.y) - static_cast<int>(g_press_pt.y);
+        ESP_LOGI(TAG, "evt RELEASED #%d dx=%d dy=%d", g_rc, g_ldx, g_ldy);
     }
 }
 
@@ -124,10 +132,6 @@ void tick_cb(lv_timer_t *timer)
         g_lastIdx = g_player->index();
         refresh_word();
     }
-    // DEBUG: show press/release counts + last delta on the bottom line.
-    char dbg[48];
-    std::snprintf(dbg, sizeof(dbg), "P=%d R=%d dx=%d dy=%d", g_pc, g_rc, g_ldx, g_ldy);
-    lv_label_set_text(g_wpm_lbl, dbg);
 }
 
 lv_obj_t *make_label(lv_obj_t *parent, lv_color_t color, const lv_font_t *font)
