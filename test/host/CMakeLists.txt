@@ -18,6 +18,7 @@ add_executable(rsvp_tests
     test_tokenize.cpp
     test_byteio.cpp
     test_index.cpp
+    test_indexbuilder.cpp
     test_utf8.cpp
     test_entity.cpp
     test_htmltext.cpp
@@ -32,6 +33,7 @@ add_executable(rsvp_tests
     ${CORE_DIR}/src/player.cpp
     ${CORE_DIR}/src/tokenize.cpp
     ${CORE_DIR}/src/index.cpp
+    ${CORE_DIR}/src/indexbuilder.cpp
     ${CORE_DIR}/src/entity.cpp
     ${CORE_DIR}/src/htmltext.cpp
     ${CORE_DIR}/src/opf.cpp

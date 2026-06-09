@@ -15,6 +15,7 @@ idf_component_register(
         "src/htmltext.cpp"
         "src/opf.cpp"
         "src/index.cpp"
+        "src/indexbuilder.cpp"
         "src/zipreader.cpp"
         "src/epub.cpp"
     INCLUDE_DIRS "include"
