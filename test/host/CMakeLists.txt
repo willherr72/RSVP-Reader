@@ -11,6 +11,7 @@ add_executable(rsvp_tests
     test_main.cpp
     test_token.cpp
     test_orp.cpp
+    test_gesture.cpp
     test_pacing.cpp
     test_player.cpp
     test_tokenize.cpp
@@ -24,6 +25,7 @@ add_executable(rsvp_tests
     test_zipreader.cpp
     test_epub.cpp
     ${CORE_DIR}/src/orp.cpp
+    ${CORE_DIR}/src/gesture.cpp
     ${CORE_DIR}/src/pacing.cpp
     ${CORE_DIR}/src/player.cpp
     ${CORE_DIR}/src/tokenize.cpp
