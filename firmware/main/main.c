@@ -41,7 +41,7 @@ static uint16_t *trans_buf_1;
 #define LVGL_TICK_PERIOD_MS    5
 #define LVGL_TASK_MAX_DELAY_MS 500
 #define LVGL_TASK_MIN_DELAY_MS 10
-#define LVGL_TASK_STACK_SIZE   (16 * 1024)   // screens (menu/library/settings/reader) build on the LVGL thread
+#define LVGL_TASK_STACK_SIZE   (8 * 1024)   // 8KB: bumping higher starves the 48KB book-load task at boot
 #define LVGL_TASK_PRIORITY     2
 
 

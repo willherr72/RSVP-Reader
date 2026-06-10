@@ -28,6 +28,10 @@ void rsvp_reader_save_position(void);
 // Pause the reader if it's playing (e.g. when the menu opens).
 void rsvp_reader_pause(void);
 
+// Re-apply persisted settings (wpm, flankers) to the running reader after the Settings
+// screen changes them. Font size applies on the next book open.
+void rsvp_reader_apply_settings(void);
+
 #ifdef __cplusplus
 }
 #endif

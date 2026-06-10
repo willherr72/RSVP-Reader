@@ -415,3 +415,22 @@ extern "C" void rsvp_reader_pause(void)
 {
     if (g_player && g_player->isPlaying()) { g_player->togglePlay(); update_status(); }
 }
+
+extern "C" void rsvp_reader_apply_settings(void)
+{
+    if (g_player == nullptr) return;
+    g_wpm = settings().wpm;
+    PacingConfig cfg = g_player->config();
+    cfg.wpm = g_wpm;
+    g_player->setConfig(cfg);
+    if (g_prev && g_next) {
+        if (settings().show_flankers) {
+            lv_obj_clear_flag(g_prev, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(g_next, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(g_prev, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(g_next, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    update_status();
+}

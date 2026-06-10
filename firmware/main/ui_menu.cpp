@@ -3,6 +3,7 @@
 #include "book_loader.hpp"
 #include "app_settings.h"
 #include "power_bsp.h"
+#include "lcd_bl_pwm_bsp.h"
 
 #include "lvgl.h"
 #include "esp_log.h"
@@ -146,8 +147,140 @@ void show_library() {
     }
 }
 
-// Stub until Task 8 fills it in.
-void show_settings() { g_screen = SCR_SETTINGS; g_overlay = make_overlay(); centered_label(g_overlay, "Settings\n(coming soon)"); }
+int clampi(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+enum StepKind { STEP_WPM, STEP_FONT, STEP_BRI };
+struct StepCtx { StepKind kind; int delta; lv_obj_t* lbl; };
+StepCtx s_steps[6];   // [0,1]=speed -/+, [2,3]=font, [4,5]=brightness
+
+void step_text(StepKind k, char* buf, std::size_t n) {
+    switch (k) {
+        case STEP_WPM:  std::snprintf(buf, n, "%d wpm", settings().wpm); break;
+        case STEP_FONT: { static const char* fn[] = {"Small","Medium","Large"};
+                          std::snprintf(buf, n, "%s", fn[settings().font]); break; }
+        case STEP_BRI:  std::snprintf(buf, n, "%d", settings().brightness); break;
+    }
+}
+
+void step_apply(StepKind k) {
+    settings_save();
+    if (k == STEP_BRI) setUpduty((uint16_t)(settings().brightness * 51));   // 1..5 -> 51..255
+    else               rsvp_reader_apply_settings();   // wpm now; font applies on next open
+}
+
+void step_cb(lv_event_t* e) {
+    StepCtx* c = (StepCtx*)lv_event_get_user_data(e);
+    switch (c->kind) {
+        case STEP_WPM:  settings().wpm = clampi(settings().wpm + c->delta * 25, 100, 800); break;
+        case STEP_FONT: settings().font = (FontSize)clampi((int)settings().font + c->delta, 0, 2); break;
+        case STEP_BRI:  settings().brightness = clampi(settings().brightness + c->delta, 1, 5); break;
+    }
+    char buf[16]; step_text(c->kind, buf, sizeof buf);
+    lv_label_set_text(c->lbl, buf);
+    step_apply(c->kind);
+}
+
+void switch_cb(lv_event_t* e) {
+    intptr_t which = (intptr_t)lv_event_get_user_data(e);
+    lv_obj_t* sw = (lv_obj_t*)lv_event_get_target(e);
+    bool on = lv_obj_has_state(sw, LV_STATE_CHECKED);
+    if (which == 0) { settings().show_flankers = on; settings_save(); rsvp_reader_apply_settings(); }
+    else            { settings().resume_on_open = on; settings_save(); }
+}
+
+lv_obj_t* settings_row(const char* name) {
+    lv_obj_t* row = lv_obj_create(g_overlay);
+    lv_obj_remove_style_all(row);
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_width(row, LV_PCT(100));
+    lv_obj_set_height(row, 50);
+    lv_obj_set_style_border_side(row, LV_BORDER_SIDE_BOTTOM, 0);
+    lv_obj_set_style_border_color(row, lv_color_hex(0x121419), 0);
+    lv_obj_set_style_border_width(row, 1, 0);
+    lv_obj_t* l = lv_label_create(row);
+    lv_label_set_text(l, name);
+    lv_obj_set_style_text_color(l, lv_color_hex(0xf2f5fa), 0);
+    lv_obj_set_style_text_font(l, &lv_font_montserrat_16, 0);
+    lv_obj_align(l, LV_ALIGN_LEFT_MID, 16, 0);
+    return row;
+}
+
+lv_obj_t* step_btn(lv_obj_t* parent, const char* sym, StepCtx* ctx) {
+    lv_obj_t* b = lv_obj_create(parent);
+    lv_obj_remove_style_all(b);
+    lv_obj_set_size(b, 38, 38);
+    lv_obj_set_style_border_width(b, 1, 0);
+    lv_obj_set_style_border_color(b, lv_color_hex(0x4a525f), 0);
+    lv_obj_set_style_radius(b, 8, 0);
+    lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(b, step_cb, LV_EVENT_CLICKED, ctx);
+    lv_obj_t* l = lv_label_create(b);
+    lv_label_set_text(l, sym);
+    lv_obj_set_style_text_color(l, lv_color_hex(0xcdd6e6), 0);
+    lv_obj_set_style_text_font(l, &lv_font_montserrat_16, 0);
+    lv_obj_center(l);
+    return b;
+}
+
+void add_stepper(const char* name, StepKind kind, int idx) {
+    lv_obj_t* row = settings_row(name);
+    lv_obj_t* cluster = lv_obj_create(row);
+    lv_obj_remove_style_all(cluster);
+    lv_obj_clear_flag(cluster, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_size(cluster, 190, LV_PCT(100));
+    lv_obj_align(cluster, LV_ALIGN_RIGHT_MID, -8, 0);
+    lv_obj_set_flex_flow(cluster, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(cluster, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(cluster, 10, 0);
+
+    s_steps[idx]     = StepCtx{ kind, -1, nullptr };
+    s_steps[idx + 1] = StepCtx{ kind, +1, nullptr };
+    step_btn(cluster, "-", &s_steps[idx]);
+    lv_obj_t* val = lv_label_create(cluster);
+    char buf[16]; step_text(kind, buf, sizeof buf);
+    lv_label_set_text(val, buf);
+    lv_obj_set_style_text_color(val, lv_color_hex(0xf2f5fa), 0);
+    lv_obj_set_style_text_font(val, &lv_font_montserrat_16, 0);
+    lv_obj_set_width(val, 78);
+    lv_obj_set_style_text_align(val, LV_TEXT_ALIGN_CENTER, 0);
+    step_btn(cluster, "+", &s_steps[idx + 1]);
+    s_steps[idx].lbl     = val;
+    s_steps[idx + 1].lbl = val;
+}
+
+void add_switch(const char* name, int which, bool on) {
+    lv_obj_t* row = settings_row(name);
+    lv_obj_t* sw = lv_switch_create(row);
+    if (on) lv_obj_add_state(sw, LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(sw, lv_color_hex(0xff3b3b), LV_PART_INDICATOR | LV_STATE_CHECKED);
+    lv_obj_align(sw, LV_ALIGN_RIGHT_MID, -16, 0);
+    lv_obj_add_event_cb(sw, switch_cb, LV_EVENT_VALUE_CHANGED, (void*)(intptr_t)which);
+}
+
+void add_soon(const char* name) {
+    lv_obj_t* row = settings_row(name);
+    lv_obj_t* tag = lv_label_create(row);
+    lv_label_set_text(tag, "soon");
+    lv_obj_set_style_text_color(tag, lv_color_hex(0x39414f), 0);
+    lv_obj_set_style_text_font(tag, &lv_font_montserrat_16, 0);
+    lv_obj_align(tag, LV_ALIGN_RIGHT_MID, -16, 0);
+}
+
+void show_settings() {
+    g_screen = SCR_SETTINGS;
+    g_overlay = make_overlay();
+    lv_obj_set_flex_flow(g_overlay, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_scroll_dir(g_overlay, LV_DIR_VER);
+    lv_obj_set_style_pad_all(g_overlay, 0, 0);
+    lv_obj_set_style_pad_row(g_overlay, 0, 0);
+    add_stepper("Reading speed", STEP_WPM, 0);
+    add_stepper("Font size", STEP_FONT, 2);
+    add_stepper("Brightness", STEP_BRI, 4);
+    add_switch("Leading / trailing words", 0, settings().show_flankers);
+    add_switch("Resume on open", 1, settings().resume_on_open);
+    add_soon("Set clock");
+    add_soon("Est. time to finish");
+}
 
 void on_boot() { g_boot_pressed.store(true); }   // from the power_bsp button task
 
