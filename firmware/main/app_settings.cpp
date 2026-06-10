@@ -30,6 +30,7 @@ void settings_load()
     if (nvs_get_u8(h, "resume", &b) == ESP_OK) s_settings.resume_on_open = b;
     if (nvs_get_u8(h, "paused", &b) == ESP_OK) s_settings.start_paused = b;
     if (nvs_get_u8(h, "rot", &b) == ESP_OK) s_settings.auto_rotate = b;
+    if (nvs_get_u8(h, "eta", &b) == ESP_OK) s_settings.show_eta = b;
     nvs_close(h);
     ESP_LOGI(TAG, "loaded: wpm=%d font=%d bri=%d flank=%d resume=%d",
              s_settings.wpm, s_settings.font, s_settings.brightness,
@@ -47,6 +48,7 @@ void settings_save()
     nvs_set_u8 (h, "resume", s_settings.resume_on_open);
     nvs_set_u8 (h, "paused", s_settings.start_paused);
     nvs_set_u8 (h, "rot", s_settings.auto_rotate);
+    nvs_set_u8 (h, "eta", s_settings.show_eta);
     nvs_commit(h);
     nvs_close(h);
 }

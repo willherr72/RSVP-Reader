@@ -193,7 +193,8 @@ void switch_cb(lv_event_t* e) {
     if (which == 0)      { settings().show_flankers = on; settings_save(); rsvp_reader_apply_settings(); }
     else if (which == 1) { settings().resume_on_open = on; settings_save(); }
     else if (which == 2) { settings().start_paused = on; settings_save(); }
-    else                 { settings().auto_rotate = on; settings_save(); }
+    else if (which == 3) { settings().auto_rotate = on; settings_save(); }
+    else                 { settings().show_eta = on; settings_save(); rsvp_reader_apply_settings(); }
 }
 
 lv_obj_t* settings_row(const char* name) {
@@ -453,6 +454,7 @@ void show_settings() {
     add_switch("Resume position", 1, settings().resume_on_open);
     add_switch("Start paused", 2, settings().start_paused);
     add_switch("Auto-rotate", 3, settings().auto_rotate);
+    add_switch("Show ETA", 4, settings().show_eta);
     add_action("Calibrate touch", cal_entry_cb);
     add_action("Set clock", setclock_entry_cb);
 }

@@ -15,6 +15,7 @@
 #include "rtc_bsp.hpp"
 #include "battery_bsp.h"
 #include "rsvp/battery.hpp"
+#include "rsvp/eta.hpp"
 #include <cstdio>
 
 #include "freertos/FreeRTOS.h"
@@ -70,6 +71,7 @@ lv_obj_t *g_post     = nullptr;
 lv_obj_t *g_prev     = nullptr;
 lv_obj_t *g_next     = nullptr;
 lv_obj_t *g_wpm_lbl  = nullptr;
+lv_obj_t *g_eta      = nullptr;     // bottom-right time-to-finish label
 lv_obj_t *g_tick_top = nullptr;
 lv_obj_t *g_tick_bot = nullptr;
 
@@ -127,6 +129,14 @@ void update_status()
     std::snprintf(buf, sizeof(buf), "%s%d wpm  .  %d%%", sym, g_wpm,
                   static_cast<int>(g_player->progress() * 100.0 + 0.5));
     lv_label_set_text(g_wpm_lbl, buf);
+    if (g_eta) {
+        if (settings().show_eta) {
+            int rem = (int)g_index.wordCount() - (int)g_player->index();
+            lv_label_set_text(g_eta, etaString(rem, g_wpm).c_str());
+        } else {
+            lv_label_set_text(g_eta, "");
+        }
+    }
 }
 
 // Re-render the current word: split at the ORP, pin the red letter to screen centre,
@@ -322,6 +332,8 @@ static void build_reader(const std::string& book_title)
     // bottom wpm . %
     g_wpm_lbl = make_label(g_scr, dim, &lv_font_montserrat_16);
     lv_obj_align(g_wpm_lbl, LV_ALIGN_BOTTOM_MID, 0, -6);
+    g_eta = make_label(g_scr, dim, &lv_font_montserrat_16);
+    lv_obj_align(g_eta, LV_ALIGN_BOTTOM_RIGHT, -10, -6);
 
     // --- engine: drive a fresh Player over the loaded document ---
     PacingConfig cfg;
