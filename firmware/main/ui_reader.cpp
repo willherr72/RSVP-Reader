@@ -13,6 +13,9 @@
 #include "power_bsp.h"
 #include "app_settings.h"
 #include "rtc_bsp.hpp"
+#include "battery_bsp.h"
+#include "rsvp/battery.hpp"
+#include <cstdio>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -44,6 +47,7 @@ static const lv_font_t* font_for(FontSize f) {
 }
 
 lv_obj_t* g_clk = nullptr;     // the reader's clock label (null when no reader is up)
+lv_obj_t* g_batt = nullptr;    // battery % label (in the top-right cluster with the clock)
 
 void clock_update() {
     if (g_clk == nullptr) return;
@@ -51,7 +55,13 @@ void clock_update() {
     if (rtc_valid() && rtc_get(t)) lv_label_set_text(g_clk, formatClock12h(t.hour, t.minute).c_str());
     else                           lv_label_set_text(g_clk, "--:--");
 }
-void clock_timer_cb(lv_timer_t*) { clock_update(); }
+void batt_update() {
+    if (g_batt == nullptr) return;
+    int mv = batt_read_mv();
+    if (mv > 0) { char b[8]; std::snprintf(b, sizeof b, "%d%%", batteryPercent(mv)); lv_label_set_text(g_batt, b); }
+    else        lv_label_set_text(g_batt, "");
+}
+void clock_timer_cb(lv_timer_t*) { clock_update(); batt_update(); }
 
 lv_obj_t *g_scr      = nullptr;
 lv_obj_t *g_pre      = nullptr;
@@ -241,6 +251,7 @@ static void build_reader(const std::string& book_title)
     if (g_tick_timer) { lv_timer_del(g_tick_timer); g_tick_timer = nullptr; }
     if (g_player)     { delete g_player; g_player = nullptr; }
     g_clk = nullptr;               // about to be deleted by lv_obj_clean below
+    g_batt = nullptr;
     g_scr = lv_screen_active();
     lv_obj_clean(g_scr);            // remove the loading overlay / any previous reader objects
     g_loading_scr = nullptr;        // (was a child of g_scr, now deleted)
@@ -260,9 +271,17 @@ static void build_reader(const std::string& book_title)
     lv_label_set_text(batt, book_title.c_str());
     lv_obj_align(batt, LV_ALIGN_TOP_LEFT, 10, 6);
 
-    g_clk = make_label(g_scr, dim, &lv_font_montserrat_16);
-    lv_obj_align(g_clk, LV_ALIGN_TOP_RIGHT, -10, 6);
-    clock_update();                 // show the time immediately
+    lv_obj_t* topr = lv_obj_create(g_scr);
+    lv_obj_remove_style_all(topr);
+    lv_obj_set_size(topr, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(topr, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(topr, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(topr, 10, 0);
+    lv_obj_align(topr, LV_ALIGN_TOP_RIGHT, -10, 6);
+    g_batt = make_label(topr, dim, &lv_font_montserrat_16);
+    g_clk  = make_label(topr, dim, &lv_font_montserrat_16);
+    clock_update();                 // show time + battery immediately
+    batt_update();
 
     // faint flankers (previous / next word)
     g_prev = make_label(g_scr, faint, &lv_font_montserrat_16);
