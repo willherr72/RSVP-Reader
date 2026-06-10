@@ -138,6 +138,11 @@
   maps mV→% via a piecewise LiPo curve (host-tested); shown left of the clock, refreshed on
   the clock timer. It's a divider, not a fuel gauge — ~1–2% sag under load is expected. (Pin
   + divider confirmed against the Waveshare schematic and `01_ADC_Test` demo.)
+- ✅ **ETA to finish (Phase 3, dated 2026-06-10)**: bottom-right time-to-finish from
+  `(wordCount − index) / wpm`, formatted by host-tested `core/eta` as `2h 15m` / `45m` /
+  `<1m` / blank. Written in the existing `update_status()` (runs on word-advance, swipe-WPM,
+  and settings-apply), so it counts down and reacts to speed changes live. **Show ETA**
+  Settings toggle (NVS). No RTC — pure arithmetic.
 
 ## Next features (see docs/superpowers/specs/ + plans/)
-**WiFi Drop** (AP + web upload of EPUB/TXT to the SD), then estimated-time-to-finish.
+**WiFi Drop** (AP + web upload of EPUB/TXT to the SD) — the last big one on the roadmap.
