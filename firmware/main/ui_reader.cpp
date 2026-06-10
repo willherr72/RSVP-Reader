@@ -12,6 +12,7 @@
 #include "book_loader.hpp"
 #include "power_bsp.h"
 #include "app_settings.h"
+#include "rtc_bsp.hpp"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -41,6 +42,16 @@ static const lv_font_t* font_for(FontSize f) {
         default:         return &lv_font_montserrat_40;   // Medium
     }
 }
+
+lv_obj_t* g_clk = nullptr;     // the reader's clock label (null when no reader is up)
+
+void clock_update() {
+    if (g_clk == nullptr) return;
+    rsvp::RtcTime t;
+    if (rtc_valid() && rtc_get(t)) lv_label_set_text(g_clk, formatClock12h(t.hour, t.minute).c_str());
+    else                           lv_label_set_text(g_clk, "--:--");
+}
+void clock_timer_cb(lv_timer_t*) { clock_update(); }
 
 lv_obj_t *g_scr      = nullptr;
 lv_obj_t *g_pre      = nullptr;
@@ -229,6 +240,7 @@ static void build_reader(const std::string& book_title)
     // Tear down any previous reader (re-entrant: opening another book rebuilds this).
     if (g_tick_timer) { lv_timer_del(g_tick_timer); g_tick_timer = nullptr; }
     if (g_player)     { delete g_player; g_player = nullptr; }
+    g_clk = nullptr;               // about to be deleted by lv_obj_clean below
     g_scr = lv_screen_active();
     lv_obj_clean(g_scr);            // remove the loading overlay / any previous reader objects
     g_loading_scr = nullptr;        // (was a child of g_scr, now deleted)
@@ -248,9 +260,9 @@ static void build_reader(const std::string& book_title)
     lv_label_set_text(batt, book_title.c_str());
     lv_obj_align(batt, LV_ALIGN_TOP_LEFT, 10, 6);
 
-    lv_obj_t *clk = make_label(g_scr, dim, &lv_font_montserrat_16);
-    lv_label_set_text(clk, "2:14");
-    lv_obj_align(clk, LV_ALIGN_TOP_RIGHT, -10, 6);
+    g_clk = make_label(g_scr, dim, &lv_font_montserrat_16);
+    lv_obj_align(g_clk, LV_ALIGN_TOP_RIGHT, -10, 6);
+    clock_update();                 // show the time immediately
 
     // faint flankers (previous / next word)
     g_prev = make_label(g_scr, faint, &lv_font_montserrat_16);
@@ -419,6 +431,7 @@ extern "C" void rsvp_reader_init(void)
 {
     if (xTaskCreatePinnedToCore(load_task, "bookload", 48 * 1024, nullptr, 3, nullptr, 1) != pdPASS)
         ESP_LOGE("ui", "failed to create book-load task");
+    lv_timer_create(clock_timer_cb, 20000, nullptr);   // refresh the clock every 20s
 }
 
 extern "C" void rsvp_reader_save_position(void)
