@@ -15,10 +15,9 @@ namespace {
 
 enum Screen { SCR_READER, SCR_MENU, SCR_LIBRARY, SCR_SETTINGS, SCR_WIFI };
 
-// Task 6 interim values: boot goes to the reader, so a book is already open.
-// Task 9 flips these to { SCR_MENU, false } (boot -> menu, nothing open yet).
-Screen g_screen   = SCR_READER;
-bool   g_book_open = true;
+// Boot goes to the menu; no book is open until one is picked from the Library.
+Screen g_screen   = SCR_MENU;
+bool   g_book_open = false;
 
 std::atomic<bool> g_boot_pressed{false};
 lv_obj_t* g_overlay = nullptr;   // current menu/library/settings overlay (null while in the reader)

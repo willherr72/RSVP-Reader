@@ -339,7 +339,7 @@ void app_main(void)
         .y_max = EXAMPLE_LCD_V_RES,
         .rst_gpio_num = -1,
         .int_gpio_num = -1,
-        .flags = { .swap_xy = 1, .mirror_x = 0, .mirror_y = 0 },
+        .flags = { .swap_xy = 1, .mirror_x = 0, .mirror_y = 1 },   // mirror_y=1: taps land on the menu/list/buttons
     };
     ESP_ERROR_CHECK(esp_lcd_touch_new_i2c_axs15231b(tp_io, &tp_cfg, &g_tp));
     lv_timer_set_period(lv_indev_get_read_timer(touch_indev), 10);  // ~100 Hz indev ceiling
@@ -358,16 +358,8 @@ void app_main(void)
     xTaskCreatePinnedToCore(example_backlight_loop_task, "example_backlight_loop_task", 4 * 1024, NULL, 2, NULL,0); 
     if (example_lvgl_lock(-1))
     {
-        rsvp_loading_screen_create();   /* Loading... + spawn the background book-load task */
-        example_lvgl_unlock();
-    }
-
-    // Wait for the background load to finish, then build the reader on the main task.
-    while (!rsvp_book_ready()) vTaskDelay(pdMS_TO_TICKS(50));
-    if (example_lvgl_lock(-1))
-    {
-        rsvp_build_reader_screen();
-        ui_menu_init();                 /* BOOT button opens the menu over the reader */
+        ui_menu_init();     /* BOOT button + navigation timer */
+        ui_menu_open();     /* boot screen = the menu; books load on demand from the Library */
         example_lvgl_unlock();
     }
 }

@@ -35,7 +35,9 @@ std::string g_book_path;          // currently-open book (for .pos resume/save)
 lv_timer_t* g_tick_timer = nullptr;
 
 static const lv_font_t* font_for(FontSize f) {
-    (void)f; return &lv_font_montserrat_48;   // Task 9 maps S/M/L -> 36/48/64
+    // Font-size is wired in Settings (saves), but renders at one size for now: LVGL's
+    // built-in montserrat maxes at 48, so distinct S/M/L sizes are a follow-up.
+    (void)f; return &lv_font_montserrat_48;
 }
 
 lv_obj_t *g_scr      = nullptr;
