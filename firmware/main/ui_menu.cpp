@@ -15,7 +15,7 @@
 
 namespace {
 
-enum Screen { SCR_READER, SCR_MENU, SCR_LIBRARY, SCR_SETTINGS, SCR_WIFI, SCR_CALIB };
+enum Screen { SCR_READER, SCR_MENU, SCR_LIBRARY, SCR_SETTINGS, SCR_WIFI, SCR_CALIB, SCR_SETCLOCK };
 
 // Boot goes to the menu; no book is open until one is picked from the Library.
 Screen g_screen   = SCR_MENU;
@@ -343,6 +343,98 @@ void add_action(const char* name, lv_event_cb_t cb) {
     lv_obj_align(chev, LV_ALIGN_RIGHT_MID, -16, 0);
 }
 
+// --- Set clock screen ---
+int  g_set_h = 12;     // 1..12
+int  g_set_m = 0;      // 0..59
+bool g_set_pm = false;
+lv_obj_t* g_set_h_lbl = nullptr;
+lv_obj_t* g_set_m_lbl = nullptr;
+lv_obj_t* g_set_ap_lbl = nullptr;
+
+void set_refresh() {
+    char b[8];
+    std::snprintf(b, sizeof b, "%d", g_set_h);   lv_label_set_text(g_set_h_lbl, b);
+    std::snprintf(b, sizeof b, "%02d", g_set_m);  lv_label_set_text(g_set_m_lbl, b);
+    lv_label_set_text(g_set_ap_lbl, g_set_pm ? "PM" : "AM");
+}
+void set_h_cb(lv_event_t* e) { int d = (int)(intptr_t)lv_event_get_user_data(e);
+    g_set_h += d; if (g_set_h < 1) g_set_h = 12; if (g_set_h > 12) g_set_h = 1; set_refresh(); }
+void set_m_cb(lv_event_t* e) { int d = (int)(intptr_t)lv_event_get_user_data(e);
+    g_set_m = (g_set_m + d + 60) % 60; set_refresh(); }
+void set_ap_cb(lv_event_t*) { g_set_pm = !g_set_pm; set_refresh(); }
+void set_go_cb(lv_event_t*) {
+    rsvp::RtcTime t{ rsvp::to24h((std::uint8_t)g_set_h, g_set_pm), (std::uint8_t)g_set_m, 0 };
+    rtc_set(t);
+    close_overlay(); show_menu();
+}
+
+// A labelled stepper row that drives a callback (delta passed as user_data).
+lv_obj_t* clock_row(const char* name, lv_event_cb_t cb, lv_obj_t** value_out) {
+    lv_obj_t* row = settings_row(name);
+    lv_obj_t* cluster = lv_obj_create(row);
+    lv_obj_remove_style_all(cluster); lv_obj_clear_flag(cluster, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_size(cluster, 300, LV_PCT(100)); lv_obj_align(cluster, LV_ALIGN_RIGHT_MID, -6, 0);
+    lv_obj_set_flex_flow(cluster, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(cluster, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(cluster, 8, 0);
+    auto mkbtn = [&](const char* sym, int delta) {
+        lv_obj_t* b = lv_obj_create(cluster); lv_obj_remove_style_all(b);
+        lv_obj_set_height(b, 46); lv_obj_set_flex_grow(b, 1);
+        lv_obj_set_style_border_width(b, 1, 0); lv_obj_set_style_border_color(b, lv_color_hex(0x4a525f), 0);
+        lv_obj_set_style_radius(b, 8, 0); lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, (void*)(intptr_t)delta);
+        lv_obj_t* l = lv_label_create(b); lv_label_set_text(l, sym);
+        lv_obj_set_style_text_color(l, lv_color_hex(0xcdd6e6), 0);
+        lv_obj_set_style_text_font(l, &lv_font_montserrat_16, 0); lv_obj_center(l);
+    };
+    mkbtn("-", -1);
+    lv_obj_t* v = lv_label_create(cluster); lv_obj_set_width(v, 70);
+    lv_obj_set_style_text_color(v, lv_color_hex(0xf2f5fa), 0);
+    lv_obj_set_style_text_font(v, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_align(v, LV_TEXT_ALIGN_CENTER, 0);
+    mkbtn("+", +1);
+    *value_out = v;
+    return row;
+}
+
+void show_setclock() {
+    g_screen = SCR_SETCLOCK;
+    g_overlay = make_overlay();
+    lv_obj_set_flex_flow(g_overlay, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_scroll_dir(g_overlay, LV_DIR_VER);
+    lv_obj_set_style_pad_all(g_overlay, 0, 0); lv_obj_set_style_pad_row(g_overlay, 0, 0);
+    rsvp::RtcTime t;                               // pre-fill from the RTC, else 12:00 AM
+    if (rtc_valid() && rtc_get(t)) {
+        int h = t.hour % 12; g_set_h = (h == 0) ? 12 : h;
+        g_set_m = t.minute; g_set_pm = t.hour >= 12;
+    } else { g_set_h = 12; g_set_m = 0; g_set_pm = false; }
+    clock_row("Hour",   set_h_cb, &g_set_h_lbl);
+    clock_row("Minute", set_m_cb, &g_set_m_lbl);
+    // AM/PM row
+    lv_obj_t* ap = settings_row("AM / PM");
+    lv_obj_t* apb = lv_obj_create(ap); lv_obj_remove_style_all(apb);
+    lv_obj_set_size(apb, 90, 44); lv_obj_align(apb, LV_ALIGN_RIGHT_MID, -12, 0);
+    lv_obj_set_style_border_width(apb, 1, 0); lv_obj_set_style_border_color(apb, lv_color_hex(0x4a525f), 0);
+    lv_obj_set_style_radius(apb, 8, 0); lv_obj_add_flag(apb, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(apb, set_ap_cb, LV_EVENT_CLICKED, nullptr);
+    g_set_ap_lbl = lv_label_create(apb);
+    lv_obj_set_style_text_color(g_set_ap_lbl, lv_color_hex(0xf2f5fa), 0);
+    lv_obj_set_style_text_font(g_set_ap_lbl, &lv_font_montserrat_16, 0); lv_obj_center(g_set_ap_lbl);
+    // Set button
+    lv_obj_t* setrow = settings_row("");
+    lv_obj_t* sb = lv_obj_create(setrow); lv_obj_remove_style_all(sb);
+    lv_obj_set_size(sb, LV_PCT(92), 44); lv_obj_center(sb);
+    lv_obj_set_style_bg_color(sb, lv_color_hex(0xff3b3b), 0); lv_obj_set_style_bg_opa(sb, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(sb, 8, 0); lv_obj_add_flag(sb, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(sb, set_go_cb, LV_EVENT_CLICKED, nullptr);
+    lv_obj_t* sl = lv_label_create(sb); lv_label_set_text(sl, "Set");
+    lv_obj_set_style_text_color(sl, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_text_font(sl, &lv_font_montserrat_16, 0); lv_obj_center(sl);
+    set_refresh();
+}
+
+void setclock_entry_cb(lv_event_t*) { close_overlay(); show_setclock(); }
+
 void show_settings() {
     g_screen = SCR_SETTINGS;
     g_overlay = make_overlay();
@@ -357,6 +449,7 @@ void show_settings() {
     add_switch("Resume position", 1, settings().resume_on_open);
     add_switch("Start paused", 2, settings().start_paused);
     add_action("Calibrate touch", cal_entry_cb);
+    add_action("Set clock", setclock_entry_cb);
 }
 
 void on_boot() { g_boot_pressed.store(true); }   // from the power_bsp button task
@@ -377,6 +470,7 @@ void nav_timer_cb(lv_timer_t*) {
         case SCR_SETTINGS:
         case SCR_WIFI:
         case SCR_CALIB:
+        case SCR_SETCLOCK:
             close_overlay();
             show_menu();
             break;
