@@ -1,10 +1,15 @@
 #ifndef POWER_BSP_H
 #define POWER_BSP_H
+#include "driver/i2c_master.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 typedef void (*power_shutdown_cb_t)(void);
+
+// The I2C0 master bus (GPIO48 SCL / GPIO47 SDA) that power_bsp creates for the TCA9554;
+// the PCF85063 RTC shares it. NULL until power_bsp_init() runs.
+i2c_master_bus_handle_t power_bsp_i2c_bus(void);
 
 // Create I2C0 (GPIO48/47) + TCA9554 (addr 000), assert expander P6 HIGH (power-hold),
 // configure the PWR button (GPIO16), and start the button monitor task. Call FIRST in

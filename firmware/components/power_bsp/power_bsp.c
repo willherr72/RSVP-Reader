@@ -14,7 +14,10 @@
 
 static const char *TAG = "power_bsp";
 static esp_io_expander_handle_t s_io = NULL;
+static i2c_master_bus_handle_t  s_i2c_bus = NULL;   // I2C0 (GPIO48/47): TCA9554 + RTC share it
 static power_shutdown_cb_t s_shutdown_cb = NULL;
+
+i2c_master_bus_handle_t power_bsp_i2c_bus(void) { return s_i2c_bus; }
 static power_shutdown_cb_t s_boot_cb = NULL;
 
 void power_bsp_set_shutdown_cb(power_shutdown_cb_t cb) { s_shutdown_cb = cb; }
@@ -73,7 +76,6 @@ static void power_button_task(void *arg)
 
 void power_bsp_init(void)
 {
-    i2c_master_bus_handle_t bus = NULL;
     i2c_master_bus_config_t cfg = {
         .clk_source = I2C_CLK_SRC_DEFAULT,
         .i2c_port = I2C_NUM_0,
@@ -82,11 +84,11 @@ void power_bsp_init(void)
         .glitch_ignore_cnt = 7,
         .flags = { .enable_internal_pullup = true },
     };
-    if (i2c_new_master_bus(&cfg, &bus) != ESP_OK) {
+    if (i2c_new_master_bus(&cfg, &s_i2c_bus) != ESP_OK) {
         ESP_LOGW(TAG, "I2C0 bus init failed; power-hold unavailable");
         return;
     }
-    if (esp_io_expander_new_i2c_tca9554(bus, ESP_IO_EXPANDER_I2C_TCA9554_ADDRESS_000, &s_io) != ESP_OK) {
+    if (esp_io_expander_new_i2c_tca9554(s_i2c_bus, ESP_IO_EXPANDER_I2C_TCA9554_ADDRESS_000, &s_io) != ESP_OK) {
         ESP_LOGW(TAG, "TCA9554 init failed; power-hold unavailable");
         s_io = NULL;
         return;

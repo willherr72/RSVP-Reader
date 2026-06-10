@@ -5,6 +5,7 @@
 #include "power_bsp.h"
 #include "lcd_bl_pwm_bsp.h"
 #include "touch_cal.h"
+#include "rtc_bsp.hpp"
 
 #include "lvgl.h"
 #include "esp_log.h"
@@ -389,6 +390,7 @@ extern "C" void ui_menu_open(void) { close_overlay(); show_menu(); }
 extern "C" void ui_menu_init(void) {
     settings_load();                  // load persisted settings (and init NVS) at boot
     touch_cal_load();                 // load persisted touch calibration
+    rtc_init();
     setUpduty((uint16_t)((5 - settings().brightness) * 40));   // apply saved brightness (duty is inverted)
     power_bsp_set_boot_cb(on_boot);
     lv_timer_create(nav_timer_cb, 80, nullptr);
