@@ -20,6 +20,7 @@ idf_component_register(
         "src/epub.cpp"
         "src/rtctime.cpp"
         "src/orient.cpp"
+        "src/battery.cpp"
     INCLUDE_DIRS "include"
     REQUIRES miniz)
 
