@@ -19,6 +19,7 @@ idf_component_register(
         "src/zipreader.cpp"
         "src/epub.cpp"
         "src/rtctime.cpp"
+        "src/orient.cpp"
     INCLUDE_DIRS "include"
     REQUIRES miniz)
 
