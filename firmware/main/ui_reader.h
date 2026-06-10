@@ -32,6 +32,10 @@ void rsvp_reader_pause(void);
 // screen changes them. Font size applies on the next book open.
 void rsvp_reader_apply_settings(void);
 
+// Create the persistent book-load task. Call once at boot (under the LVGL lock) while
+// internal RAM is plentiful.
+void rsvp_reader_init(void);
+
 #ifdef __cplusplus
 }
 #endif

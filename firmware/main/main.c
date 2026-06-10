@@ -184,9 +184,20 @@ static void TouchInputReadCallback(lv_indev_t * indev, lv_indev_data_t *indevDat
     taskEXIT_CRITICAL(&g_touch_mux);
 
     if (pressed_now) {
+        // Map the AXS15231B's reported coords into the rotated 640x172 logical space.
+        // Calibrated from corner taps: driver-y = horizontal (20..620), driver-x =
+        // inverted vertical (630=top .. 509=bottom). LVGL renders logical (flush rotates
+        // the pixels), so it hit-tests in logical coords.
+        // Calibrated affine (driver coords -> logical 640x172) from 3-point calibration.
+        int lx = (78 * (int)x + 999 * (int)y) / 1000 - 54;
+        int ly = (-891 * (int)x + 11 * (int)y) / 1000 + 565;
+        if (lx < 0) lx = 0; else if (lx > 639) lx = 639;
+        if (ly < 0) ly = 0; else if (ly > 171) ly = 171;
+        // LVGL rotates the fed (native 172x640) point to logical as hit=(640-fed_y, fed_x),
+        // so feed the inverse to land on (lx, ly).
         indevData->state = LV_INDEV_STATE_PRESSED;
-        indevData->point.x = x;
-        indevData->point.y = y;
+        indevData->point.x = ly;
+        indevData->point.y = 640 - lx;
     } else {
         indevData->state = LV_INDEV_STATE_RELEASED;
     }
@@ -326,6 +337,7 @@ void app_main(void)
     touch_indev = lv_indev_create();
     lv_indev_set_type(touch_indev, LV_INDEV_TYPE_POINTER);
     lv_indev_set_read_cb(touch_indev, TouchInputReadCallback);
+    lv_indev_set_scroll_limit(touch_indev, 80);   // touch drifts ~44px during a tap; don't misread taps as scrolls
 
     /* AXS15231B touch over the shared I2C bus (user_i2c_port1_handle). Feed LVGL
        its logical (pre-rotation, portrait 172x640) coordinates; swap_xy converts
@@ -358,6 +370,7 @@ void app_main(void)
     xTaskCreatePinnedToCore(example_backlight_loop_task, "example_backlight_loop_task", 4 * 1024, NULL, 2, NULL,0); 
     if (example_lvgl_lock(-1))
     {
+        rsvp_reader_init(); /* persistent 48KB book-load task while internal RAM is free */
         ui_menu_init();     /* BOOT button + navigation timer */
         ui_menu_open();     /* boot screen = the menu; books load on demand from the Library */
         example_lvgl_unlock();

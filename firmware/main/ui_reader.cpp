@@ -52,8 +52,10 @@ lv_obj_t *g_tick_bot = nullptr;
 
 lv_point_t g_press_pt = {0, 0};
 
-// Set by the background load task (off the LVGL thread); polled by an lv_timer.
+// The persistent load task (created once at boot) waits on g_load_request, loads the
+// book off the LVGL thread, then sets g_load_done (polled by an lv_timer).
 std::atomic<bool> g_load_done{false};
+std::atomic<bool> g_load_request{false};
 std::string       g_loaded_title;
 lv_obj_t*         g_loading_scr = nullptr;
 
@@ -298,7 +300,7 @@ static void build_reader(const std::string& book_title)
         if (p < g_index.wordCount()) g_player->seek(p);
     }
     g_lastIdx = static_cast<std::size_t>(-1);
-    g_player->play();
+    if (!settings().start_paused) g_player->play();   // else open paused; tap to start
 
     refresh_word();
     g_tick_timer = lv_timer_create(tick_cb, 33, nullptr);
@@ -319,14 +321,18 @@ namespace {
 // publishes completion via g_load_done.
 void load_task(void*)
 {
-    std::optional<LoadedBook> book = g_use_first ? load_first_book() : load_book(g_pending_path);
-    if (!book) book = load_book("");          // sample fallback (never null)
-    if (book) {
-        g_index        = std::move(book->index);
-        g_loaded_title = book->title;
+    for (;;) {
+        if (g_load_request.exchange(false)) {
+            std::optional<LoadedBook> book = g_use_first ? load_first_book() : load_book(g_pending_path);
+            if (!book) book = load_book("");          // sample fallback (never null)
+            if (book) {
+                g_index        = std::move(book->index);
+                g_loaded_title = book->title;
+            }
+            g_load_done.store(true);
+        }
+        vTaskDelay(pdMS_TO_TICKS(15));
     }
-    g_load_done.store(true);
-    vTaskDelete(nullptr);
 }
 
 } // namespace
@@ -402,9 +408,15 @@ extern "C" void rsvp_open_book_path(const char* path)
     lv_label_set_text(lbl, "Loading...");
     lv_obj_center(lbl);
 
+    g_load_request.store(true);    // hand off to the persistent load task (created at boot)
+    lv_timer_create(open_done_timer_cb, 50, nullptr);
+}
+
+// Create the persistent book-load task once, at boot, while internal RAM is still free.
+extern "C" void rsvp_reader_init(void)
+{
     if (xTaskCreatePinnedToCore(load_task, "bookload", 48 * 1024, nullptr, 3, nullptr, 1) != pdPASS)
         ESP_LOGE("ui", "failed to create book-load task");
-    lv_timer_create(open_done_timer_cb, 50, nullptr);
 }
 
 extern "C" void rsvp_reader_save_position(void)

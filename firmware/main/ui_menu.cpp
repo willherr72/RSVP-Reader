@@ -63,6 +63,7 @@ void tile_cb(lv_event_t* e) {
 void show_menu() {
     g_screen = SCR_MENU;
     g_overlay = make_overlay();
+    lv_obj_clear_flag(g_overlay, LV_OBJ_FLAG_SCROLLABLE);   // tiles fill it; don't eat taps as scrolls
     lv_obj_set_flex_flow(g_overlay, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(g_overlay, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_all(g_overlay, 8, 0);
@@ -163,7 +164,7 @@ void step_text(StepKind k, char* buf, std::size_t n) {
 
 void step_apply(StepKind k) {
     settings_save();
-    if (k == STEP_BRI) setUpduty((uint16_t)(settings().brightness * 51));   // 1..5 -> 51..255
+    if (k == STEP_BRI) setUpduty((uint16_t)((5 - settings().brightness) * 40));   // inverted: 5->duty0 (bright), 1->duty160 (dim)
     else               rsvp_reader_apply_settings();   // wpm now; font applies on next open
 }
 
@@ -183,8 +184,9 @@ void switch_cb(lv_event_t* e) {
     intptr_t which = (intptr_t)lv_event_get_user_data(e);
     lv_obj_t* sw = (lv_obj_t*)lv_event_get_target(e);
     bool on = lv_obj_has_state(sw, LV_STATE_CHECKED);
-    if (which == 0) { settings().show_flankers = on; settings_save(); rsvp_reader_apply_settings(); }
-    else            { settings().resume_on_open = on; settings_save(); }
+    if (which == 0)      { settings().show_flankers = on; settings_save(); rsvp_reader_apply_settings(); }
+    else if (which == 1) { settings().resume_on_open = on; settings_save(); }
+    else                 { settings().start_paused = on; settings_save(); }
 }
 
 lv_obj_t* settings_row(const char* name) {
@@ -207,7 +209,8 @@ lv_obj_t* settings_row(const char* name) {
 lv_obj_t* step_btn(lv_obj_t* parent, const char* sym, StepCtx* ctx) {
     lv_obj_t* b = lv_obj_create(parent);
     lv_obj_remove_style_all(b);
-    lv_obj_set_size(b, 38, 38);
+    lv_obj_set_height(b, 46);
+    lv_obj_set_flex_grow(b, 1);            // fill the cluster -> wide, easy-to-hit targets
     lv_obj_set_style_border_width(b, 1, 0);
     lv_obj_set_style_border_color(b, lv_color_hex(0x4a525f), 0);
     lv_obj_set_style_radius(b, 8, 0);
@@ -226,8 +229,8 @@ void add_stepper(const char* name, StepKind kind, int idx) {
     lv_obj_t* cluster = lv_obj_create(row);
     lv_obj_remove_style_all(cluster);
     lv_obj_clear_flag(cluster, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_size(cluster, 190, LV_PCT(100));
-    lv_obj_align(cluster, LV_ALIGN_RIGHT_MID, -8, 0);
+    lv_obj_set_size(cluster, 360, LV_PCT(100));
+    lv_obj_align(cluster, LV_ALIGN_RIGHT_MID, -6, 0);
     lv_obj_set_flex_flow(cluster, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(cluster, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_column(cluster, 10, 0);
@@ -240,7 +243,7 @@ void add_stepper(const char* name, StepKind kind, int idx) {
     lv_label_set_text(val, buf);
     lv_obj_set_style_text_color(val, lv_color_hex(0xf2f5fa), 0);
     lv_obj_set_style_text_font(val, &lv_font_montserrat_16, 0);
-    lv_obj_set_width(val, 78);
+    lv_obj_set_width(val, 92);
     lv_obj_set_style_text_align(val, LV_TEXT_ALIGN_CENTER, 0);
     step_btn(cluster, "+", &s_steps[idx + 1]);
     s_steps[idx].lbl     = val;
@@ -256,15 +259,6 @@ void add_switch(const char* name, int which, bool on) {
     lv_obj_add_event_cb(sw, switch_cb, LV_EVENT_VALUE_CHANGED, (void*)(intptr_t)which);
 }
 
-void add_soon(const char* name) {
-    lv_obj_t* row = settings_row(name);
-    lv_obj_t* tag = lv_label_create(row);
-    lv_label_set_text(tag, "soon");
-    lv_obj_set_style_text_color(tag, lv_color_hex(0x39414f), 0);
-    lv_obj_set_style_text_font(tag, &lv_font_montserrat_16, 0);
-    lv_obj_align(tag, LV_ALIGN_RIGHT_MID, -16, 0);
-}
-
 void show_settings() {
     g_screen = SCR_SETTINGS;
     g_overlay = make_overlay();
@@ -276,9 +270,8 @@ void show_settings() {
     add_stepper("Font size", STEP_FONT, 2);
     add_stepper("Brightness", STEP_BRI, 4);
     add_switch("Leading / trailing words", 0, settings().show_flankers);
-    add_switch("Resume on open", 1, settings().resume_on_open);
-    add_soon("Set clock");
-    add_soon("Est. time to finish");
+    add_switch("Resume position", 1, settings().resume_on_open);
+    add_switch("Start paused", 2, settings().start_paused);
 }
 
 void on_boot() { g_boot_pressed.store(true); }   // from the power_bsp button task
@@ -306,9 +299,36 @@ void nav_timer_cb(lv_timer_t*) {
 
 } // namespace
 
+// --- TEMP touch calibration: shows 3 crosshair targets at known logical positions ---
+static void draw_cross(lv_obj_t* parent, int x, int y, const char* num) {
+    lv_obj_t* h = lv_obj_create(parent); lv_obj_remove_style_all(h);
+    lv_obj_set_size(h, 36, 3); lv_obj_set_style_bg_color(h, lv_color_hex(0xff3b3b), 0);
+    lv_obj_set_style_bg_opa(h, LV_OPA_COVER, 0); lv_obj_set_pos(h, x - 18, y - 1);
+    lv_obj_t* v = lv_obj_create(parent); lv_obj_remove_style_all(v);
+    lv_obj_set_size(v, 3, 36); lv_obj_set_style_bg_color(v, lv_color_hex(0xff3b3b), 0);
+    lv_obj_set_style_bg_opa(v, LV_OPA_COVER, 0); lv_obj_set_pos(v, x - 1, y - 18);
+    lv_obj_t* t = lv_label_create(parent); lv_label_set_text(t, num);
+    lv_obj_set_style_text_color(t, lv_color_hex(0xf2f5fa), 0); lv_obj_set_pos(t, x + 8, y + 6);
+}
+
+extern "C" void ui_calib(void) {
+    lv_obj_t* scr = lv_screen_active();
+    lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
+    draw_cross(scr, 80, 35, "1");      // logical (80,35)
+    draw_cross(scr, 560, 35, "2");     // logical (560,35)
+    draw_cross(scr, 320, 150, "3");    // logical (320,150)
+    lv_obj_t* l = lv_label_create(scr);
+    lv_label_set_text(l, "Tap 1, 2, 3");
+    lv_obj_set_style_text_color(l, lv_color_hex(0x8893a6), 0);
+    lv_obj_align(l, LV_ALIGN_CENTER, 0, -12);
+}
+
 extern "C" void ui_menu_open(void) { close_overlay(); show_menu(); }
 
 extern "C" void ui_menu_init(void) {
+    settings_load();                  // load persisted settings (and init NVS) at boot
+    setUpduty((uint16_t)((5 - settings().brightness) * 40));   // apply saved brightness (duty is inverted)
     power_bsp_set_boot_cb(on_boot);
     lv_timer_create(nav_timer_cb, 80, nullptr);
 }
