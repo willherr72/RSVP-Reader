@@ -125,7 +125,14 @@
   scaffold implied (touch bus only had 0x3b). `power_bsp_i2c_bus()` exposes the I2C0 handle;
   `rtc_bsp` adds the device there. 12-hour clock in the reader; "Set clock" in Settings;
   pure conversions in host-tested `core/rtctime`.
+- ✅ **IMU auto-rotate (Phase 3, dated 2026-06-10)**: **QMI8658 at 0x6b on the same I2C0 power
+  bus** (`imu_bsp` via `power_bsp_i2c_bus()`). A 5 Hz poll of the **`ay`** accel axis
+  (deadzone 4000 + 3-tick hold) flips the display **rotation 90↔270** when the device is
+  turned over; `ay` is +ve normal, −ve flipped, ~0 when flat (so flat → no flip). The
+  existing touch calibration **follows the flip for free** — LVGL rotates indev input by the
+  display rotation. Decision is host-tested in `core/orient`; **Auto-rotate** Settings toggle
+  (NVS) locks it.
 
 ## Next features (see docs/superpowers/specs/ + plans/)
-**WiFi Drop** (AP + web upload of EPUB/TXT to the SD), then IMU auto-rotate, real battery
-(%/ADC), estimated-time-to-finish.
+**WiFi Drop** (AP + web upload of EPUB/TXT to the SD), then real battery (%/ADC),
+estimated-time-to-finish.
