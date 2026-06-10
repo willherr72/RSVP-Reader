@@ -105,9 +105,27 @@
   boot guard) → "Powering off…" screen → `power_off()` drives **P6 low** to shut down.
   - **USB caveat:** on USB the board stays powered regardless of P6, so a long-press just
     shows "Powering off…" and freezes there; real power-down only happens on battery.
-  - Battery %/voltage (ADC), RTC, IMU, the BOOT button (GPIO0), and a menu "Power off"
-    entry are Phase 2/3.
+  - Battery %/voltage (ADC), IMU, and a menu "Power off" entry are still Phase 3.
+- ✅ **Menu / Library / Settings (Phase 2A)**: BOOT button (GPIO0, short-press in
+  `power_bsp`) opens a tile menu over the reader; Library lists SD books (title/author/%,
+  per-book resume via `.pos`); Settings (font/WPM/brightness/flankers/resume/start-paused)
+  persist in NVS. On-device gotchas learned here:
+  - **Touch calibration:** the AXS15231B's reported coords need an **affine** map to the
+    rotated 640×172 logical space, and **LVGL rotates indev input** (native 172×640 →
+    logical) as `hit = (640 - fed_y, fed_x)` — feed the inverse. Calibration is a
+    re-runnable Settings action (3 crosshairs → Cramer affine → NVS, `touch_cal.h`).
+    `lv_indev_set_scroll_limit(80)` so the jittery touch (~44px drift per tap) isn't read
+    as a scroll.
+  - **Backlight is inverted:** `LCD_PWM_MODE_255 = 0xff-255 = 0`, so `setUpduty(0)` =
+    brightest, `255` = off.
+  - The 48KB book-load task must be created **once at boot** (`rsvp_reader_init`); spawning
+    it per-open fails once the UI has fragmented internal RAM.
+- ✅ **RTC + clock (Phase 3, dated 2026-06-10)**: **PCF85063 at 0x51 on the I2C0 power bus**
+  (GPIO48/47, with the TCA9554) — **not** the touch bus the `i2c_bsp` `rtc_dev_handle`
+  scaffold implied (touch bus only had 0x3b). `power_bsp_i2c_bus()` exposes the I2C0 handle;
+  `rtc_bsp` adds the device there. 12-hour clock in the reader; "Set clock" in Settings;
+  pure conversions in host-tested `core/rtctime`.
 
 ## Next features (see docs/superpowers/specs/ + plans/)
-**Library + settings screens** (where touch `mirror_y=1` gets set), then IMU auto-rotate,
-RTC, real battery (%/ADC), Wi-Fi upload.
+**WiFi Drop** (AP + web upload of EPUB/TXT to the SD), then IMU auto-rotate, real battery
+(%/ADC), estimated-time-to-finish.
