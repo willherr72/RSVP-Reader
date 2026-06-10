@@ -7,6 +7,7 @@
 #include "touch_cal.h"
 #include "rtc_bsp.hpp"
 #include "imu_bsp.hpp"
+#include "autorotate.h"
 
 #include "lvgl.h"
 #include "esp_log.h"
@@ -190,7 +191,8 @@ void switch_cb(lv_event_t* e) {
     bool on = lv_obj_has_state(sw, LV_STATE_CHECKED);
     if (which == 0)      { settings().show_flankers = on; settings_save(); rsvp_reader_apply_settings(); }
     else if (which == 1) { settings().resume_on_open = on; settings_save(); }
-    else                 { settings().start_paused = on; settings_save(); }
+    else if (which == 2) { settings().start_paused = on; settings_save(); }
+    else                 { settings().auto_rotate = on; settings_save(); }
 }
 
 lv_obj_t* settings_row(const char* name) {
@@ -449,6 +451,7 @@ void show_settings() {
     add_switch("Leading / trailing words", 0, settings().show_flankers);
     add_switch("Resume position", 1, settings().resume_on_open);
     add_switch("Start paused", 2, settings().start_paused);
+    add_switch("Auto-rotate", 3, settings().auto_rotate);
     add_action("Calibrate touch", cal_entry_cb);
     add_action("Set clock", setclock_entry_cb);
 }
@@ -487,6 +490,7 @@ extern "C" void ui_menu_init(void) {
     touch_cal_load();                 // load persisted touch calibration
     rtc_init();
     imu_init();
+    autorotate_start();
     setUpduty((uint16_t)((5 - settings().brightness) * 40));   // apply saved brightness (duty is inverted)
     power_bsp_set_boot_cb(on_boot);
     lv_timer_create(nav_timer_cb, 80, nullptr);

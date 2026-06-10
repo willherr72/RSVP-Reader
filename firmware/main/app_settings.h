@@ -9,6 +9,7 @@ struct Settings {
     bool     show_flankers  = true;  // leading/trailing words
     bool     resume_on_open = true;  // open at the saved position vs. at 0%
     bool     start_paused   = false; // open paused (tap to start) vs. auto-play
+    bool     auto_rotate    = true;  // IMU 180-degree auto-flip
 };
 
 Settings& settings();   // the single in-RAM instance
