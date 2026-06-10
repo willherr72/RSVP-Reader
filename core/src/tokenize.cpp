@@ -1,4 +1,5 @@
 #include "rsvp/tokenize.hpp"
+#include "rsvp/entity.hpp"
 #include <functional>
 #include <utility>
 
@@ -25,8 +26,9 @@ bool endsSentence(const std::string& w) {
 
 } // namespace
 
-void tokenizePlainTextInto(const std::string& text,
+void tokenizePlainTextInto(const std::string& rawText,
                            const std::function<void(const std::string&, std::uint8_t)>& sink) {
+    const std::string text = normalizeUnicodePunctuation(rawText);   // smart quotes/dashes -> ASCII
     const std::size_t n = text.size();
     std::size_t i = 0;
     // One-token lookahead: a blank line flags FLAG_PARAGRAPH_END on the PRIOR word, so we

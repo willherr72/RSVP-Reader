@@ -14,7 +14,7 @@ void putBlob16(std::vector<std::uint8_t>& b, const std::string& s) {
     b.insert(b.end(), s.begin(), s.begin() + static_cast<std::ptrdiff_t>(len));
 }
 constexpr char          kMagic[4] = {'R', 'S', 'V', 'I'};
-constexpr std::uint16_t kVersion  = 1;
+constexpr std::uint16_t kVersion  = 2;   // MUST match kVersion in index.cpp (writer vs parser)
 } // namespace
 
 IndexBuilder::IndexBuilder(const DocMeta& meta, std::uint32_t seekInterval)

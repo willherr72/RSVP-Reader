@@ -13,7 +13,7 @@ TEST_CASE("serializeIndex writes magic, version, and the header counts") {
 
     CHECK(b[0] == 'R'); CHECK(b[1] == 'S'); CHECK(b[2] == 'V'); CHECK(b[3] == 'I');
     std::size_t off = 4;
-    CHECK(byteio::getU16(b, off) == 1);       // version
+    CHECK(byteio::getU16(b, off) == 2);       // version
     CHECK(byteio::getU16(b, off) == 0);       // flags
     CHECK(byteio::getU32(b, off) == 20);      // sourceSize
     CHECK(byteio::getU32(b, off) == 12345);   // sourceMtime

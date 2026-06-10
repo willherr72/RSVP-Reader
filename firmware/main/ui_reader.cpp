@@ -35,9 +35,11 @@ std::string g_book_path;          // currently-open book (for .pos resume/save)
 lv_timer_t* g_tick_timer = nullptr;
 
 static const lv_font_t* font_for(FontSize f) {
-    // Font-size is wired in Settings (saves), but renders at one size for now: LVGL's
-    // built-in montserrat maxes at 48, so distinct S/M/L sizes are a follow-up.
-    (void)f; return &lv_font_montserrat_48;
+    switch (f) {
+        case FONT_SMALL: return &lv_font_montserrat_32;
+        case FONT_LARGE: return &lv_font_montserrat_48;
+        default:         return &lv_font_montserrat_40;   // Medium
+    }
 }
 
 lv_obj_t *g_scr      = nullptr;
@@ -445,6 +447,13 @@ extern "C" void rsvp_reader_apply_settings(void)
             lv_obj_add_flag(g_prev, LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(g_next, LV_OBJ_FLAG_HIDDEN);
         }
+    }
+    if (g_pre && g_orp && g_post) {                  // apply font size live
+        const lv_font_t* f = font_for(settings().font);
+        lv_obj_set_style_text_font(g_pre,  f, 0);
+        lv_obj_set_style_text_font(g_orp,  f, 0);
+        lv_obj_set_style_text_font(g_post, f, 0);
+        refresh_word();
     }
     update_status();
 }

@@ -67,4 +67,28 @@ std::string decodeEntities(const std::string& s) {
     return out;
 }
 
+std::string normalizeUnicodePunctuation(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    const std::size_t n = s.size();
+    for (std::size_t i = 0; i < n; ) {
+        const unsigned char c = static_cast<unsigned char>(s[i]);
+        if (c == 0xE2 && i + 2 < n && static_cast<unsigned char>(s[i + 1]) == 0x80) {
+            switch (static_cast<unsigned char>(s[i + 2])) {
+                case 0x98: case 0x99: out += '\'';  i += 3; continue;  // ' '  U+2018/2019
+                case 0x9C: case 0x9D: out += '"';   i += 3; continue;  // " "  U+201C/201D
+                case 0x93:            out += '-';   i += 3; continue;  // en dash U+2013
+                case 0x94:            out += "--";  i += 3; continue;  // em dash U+2014
+                case 0xA6:            out += "...";  i += 3; continue; // ellipsis U+2026
+                case 0xA2:            out += '*';   i += 3; continue;  // bullet U+2022
+                default: break;
+            }
+        } else if (c == 0xC2 && i + 1 < n && static_cast<unsigned char>(s[i + 1]) == 0xA0) {
+            out += ' '; i += 2; continue;   // non-breaking space U+00A0
+        }
+        out += static_cast<char>(c); ++i;
+    }
+    return out;
+}
+
 } // namespace rsvp

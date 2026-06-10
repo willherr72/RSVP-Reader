@@ -8,7 +8,7 @@ using namespace byteio;
 namespace {
 // All multi-byte fields in the compiled-index format are little-endian (see byteio.hpp).
 constexpr char          kMagic[4] = {'R', 'S', 'V', 'I'};
-constexpr std::uint16_t kVersion  = 1;
+constexpr std::uint16_t kVersion  = 2;   // v2: tokenizer normalizes Unicode punctuation to ASCII
 } // namespace
 
 std::vector<std::uint8_t> serializeIndex(const Document& doc, const DocMeta& meta,
