@@ -4,6 +4,7 @@
 #include "app_settings.h"
 #include "power_bsp.h"
 #include "lcd_bl_pwm_bsp.h"
+#include "touch_cal.h"
 
 #include "lvgl.h"
 #include "esp_log.h"
@@ -13,7 +14,7 @@
 
 namespace {
 
-enum Screen { SCR_READER, SCR_MENU, SCR_LIBRARY, SCR_SETTINGS, SCR_WIFI };
+enum Screen { SCR_READER, SCR_MENU, SCR_LIBRARY, SCR_SETTINGS, SCR_WIFI, SCR_CALIB };
 
 // Boot goes to the menu; no book is open until one is picked from the Library.
 Screen g_screen   = SCR_MENU;
@@ -130,7 +131,8 @@ void show_library() {
         lv_obj_set_style_text_color(auth, lv_color_hex(0x8893a6), 0);
         lv_obj_align(auth, LV_ALIGN_BOTTOM_LEFT, 16, -6);
 
-        const int pct = (b.wordCount > 0) ? (int)((uint64_t)b.position * 100 / b.wordCount) : 0;
+        const int pct = (b.wordCount > 0)
+            ? (int)(((uint64_t)b.position * 100 + b.wordCount / 2) / b.wordCount) : 0;   // round (match the reader)
         char buf[8]; std::snprintf(buf, sizeof buf, "%d%%", pct);
         lv_obj_t* pc = lv_label_create(row);
         lv_label_set_text(pc, buf);
@@ -259,6 +261,87 @@ void add_switch(const char* name, int which, bool on) {
     lv_obj_add_event_cb(sw, switch_cb, LV_EVENT_VALUE_CHANGED, (void*)(intptr_t)which);
 }
 
+// --- touch calibration (re-runnable from Settings) ---
+const int CAL_TX[3] = {80, 560, 320};   // target logical positions
+const int CAL_TY[3] = {35, 35, 150};
+int g_cal_step = 0;
+uint16_t g_cal_raw[3][2];
+
+void draw_cross_at(lv_obj_t* parent, int x, int y) {
+    lv_obj_t* h = lv_obj_create(parent); lv_obj_remove_style_all(h);
+    lv_obj_set_size(h, 40, 3); lv_obj_set_style_bg_color(h, lv_color_hex(0xff3b3b), 0);
+    lv_obj_set_style_bg_opa(h, LV_OPA_COVER, 0); lv_obj_set_pos(h, x - 20, y - 1);
+    lv_obj_t* v = lv_obj_create(parent); lv_obj_remove_style_all(v);
+    lv_obj_set_size(v, 3, 40); lv_obj_set_style_bg_color(v, lv_color_hex(0xff3b3b), 0);
+    lv_obj_set_style_bg_opa(v, LV_OPA_COVER, 0); lv_obj_set_pos(v, x - 1, y - 20);
+}
+
+void draw_cal_step() {
+    lv_obj_clean(g_overlay);
+    draw_cross_at(g_overlay, CAL_TX[g_cal_step], CAL_TY[g_cal_step]);
+    lv_obj_t* l = lv_label_create(g_overlay);
+    char buf[40]; std::snprintf(buf, sizeof buf, "Tap the cross  (%d/3)", g_cal_step + 1);
+    lv_label_set_text(l, buf);
+    lv_obj_set_style_text_color(l, lv_color_hex(0x8893a6), 0);
+    lv_obj_set_style_text_font(l, &lv_font_montserrat_16, 0);
+    lv_obj_align(l, LV_ALIGN_CENTER, 0, 0);
+}
+
+// Solve t_i = out[0]*rx_i + out[1]*ry_i + out[2] for the 3 calibration points (Cramer).
+bool solve3(const double rx[3], const double ry[3], const double t[3], double out[3]) {
+    double det = rx[0]*(ry[1]-ry[2]) - ry[0]*(rx[1]-rx[2]) + (rx[1]*ry[2]-rx[2]*ry[1]);
+    if (det < 1e-6 && det > -1e-6) return false;
+    out[0] = (t[0]*(ry[1]-ry[2]) - ry[0]*(t[1]-t[2]) + (t[1]*ry[2]-t[2]*ry[1])) / det;
+    out[1] = (rx[0]*(t[1]-t[2]) - t[0]*(rx[1]-rx[2]) + (rx[1]*t[2]-rx[2]*t[1])) / det;
+    out[2] = (rx[0]*(ry[1]*t[2]-ry[2]*t[1]) - ry[0]*(rx[1]*t[2]-rx[2]*t[1]) + t[0]*(rx[1]*ry[2]-rx[2]*ry[1])) / det;
+    return true;
+}
+
+void finish_calib_async(void*) { close_overlay(); show_menu(); }
+
+void cal_pressed_cb(lv_event_t*) {
+    if (g_cal_step < 3) touch_get_raw(&g_cal_raw[g_cal_step][0], &g_cal_raw[g_cal_step][1]);
+}
+
+void cal_released_cb(lv_event_t*) {
+    if (g_cal_step >= 3) return;
+    g_cal_step++;
+    if (g_cal_step < 3) { draw_cal_step(); return; }
+    double rx[3], ry[3], tx[3], ty[3], cx[3], cy[3];
+    for (int i = 0; i < 3; i++) { rx[i] = g_cal_raw[i][0]; ry[i] = g_cal_raw[i][1];
+                                  tx[i] = CAL_TX[i]; ty[i] = CAL_TY[i]; }
+    if (solve3(rx, ry, tx, cx) && solve3(rx, ry, ty, cy)) {
+        float coef[6] = { (float)cx[0], (float)cx[1], (float)cx[2],
+                          (float)cy[0], (float)cy[1], (float)cy[2] };
+        touch_set_calibration(coef);
+    }
+    lv_async_call(finish_calib_async, nullptr);   // defer the screen change out of the event
+}
+
+void start_calibration() {
+    close_overlay();
+    g_screen = SCR_CALIB;
+    g_cal_step = 0;
+    g_overlay = make_overlay();
+    lv_obj_add_flag(g_overlay, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(g_overlay, cal_pressed_cb, LV_EVENT_PRESSED, nullptr);
+    lv_obj_add_event_cb(g_overlay, cal_released_cb, LV_EVENT_RELEASED, nullptr);
+    draw_cal_step();
+}
+
+void cal_entry_cb(lv_event_t*) { start_calibration(); }
+
+void add_action(const char* name, lv_event_cb_t cb) {
+    lv_obj_t* row = settings_row(name);
+    lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(row, cb, LV_EVENT_CLICKED, nullptr);
+    lv_obj_t* chev = lv_label_create(row);
+    lv_label_set_text(chev, ">");
+    lv_obj_set_style_text_color(chev, lv_color_hex(0x8893a6), 0);
+    lv_obj_set_style_text_font(chev, &lv_font_montserrat_16, 0);
+    lv_obj_align(chev, LV_ALIGN_RIGHT_MID, -16, 0);
+}
+
 void show_settings() {
     g_screen = SCR_SETTINGS;
     g_overlay = make_overlay();
@@ -272,6 +355,7 @@ void show_settings() {
     add_switch("Leading / trailing words", 0, settings().show_flankers);
     add_switch("Resume position", 1, settings().resume_on_open);
     add_switch("Start paused", 2, settings().start_paused);
+    add_action("Calibrate touch", cal_entry_cb);
 }
 
 void on_boot() { g_boot_pressed.store(true); }   // from the power_bsp button task
@@ -291,6 +375,7 @@ void nav_timer_cb(lv_timer_t*) {
         case SCR_LIBRARY:
         case SCR_SETTINGS:
         case SCR_WIFI:
+        case SCR_CALIB:
             close_overlay();
             show_menu();
             break;
@@ -299,35 +384,11 @@ void nav_timer_cb(lv_timer_t*) {
 
 } // namespace
 
-// --- TEMP touch calibration: shows 3 crosshair targets at known logical positions ---
-static void draw_cross(lv_obj_t* parent, int x, int y, const char* num) {
-    lv_obj_t* h = lv_obj_create(parent); lv_obj_remove_style_all(h);
-    lv_obj_set_size(h, 36, 3); lv_obj_set_style_bg_color(h, lv_color_hex(0xff3b3b), 0);
-    lv_obj_set_style_bg_opa(h, LV_OPA_COVER, 0); lv_obj_set_pos(h, x - 18, y - 1);
-    lv_obj_t* v = lv_obj_create(parent); lv_obj_remove_style_all(v);
-    lv_obj_set_size(v, 3, 36); lv_obj_set_style_bg_color(v, lv_color_hex(0xff3b3b), 0);
-    lv_obj_set_style_bg_opa(v, LV_OPA_COVER, 0); lv_obj_set_pos(v, x - 1, y - 18);
-    lv_obj_t* t = lv_label_create(parent); lv_label_set_text(t, num);
-    lv_obj_set_style_text_color(t, lv_color_hex(0xf2f5fa), 0); lv_obj_set_pos(t, x + 8, y + 6);
-}
-
-extern "C" void ui_calib(void) {
-    lv_obj_t* scr = lv_screen_active();
-    lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
-    draw_cross(scr, 80, 35, "1");      // logical (80,35)
-    draw_cross(scr, 560, 35, "2");     // logical (560,35)
-    draw_cross(scr, 320, 150, "3");    // logical (320,150)
-    lv_obj_t* l = lv_label_create(scr);
-    lv_label_set_text(l, "Tap 1, 2, 3");
-    lv_obj_set_style_text_color(l, lv_color_hex(0x8893a6), 0);
-    lv_obj_align(l, LV_ALIGN_CENTER, 0, -12);
-}
-
 extern "C" void ui_menu_open(void) { close_overlay(); show_menu(); }
 
 extern "C" void ui_menu_init(void) {
     settings_load();                  // load persisted settings (and init NVS) at boot
+    touch_cal_load();                 // load persisted touch calibration
     setUpduty((uint16_t)((5 - settings().brightness) * 40));   // apply saved brightness (duty is inverted)
     power_bsp_set_boot_cb(on_boot);
     lv_timer_create(nav_timer_cb, 80, nullptr);

@@ -24,6 +24,8 @@
 #include "power_bsp.h"
 #include "ui_reader.h"
 #include "ui_menu.h"
+#include "touch_cal.h"
+#include "nvs.h"
 
 
 static const char *TAG = "example";
@@ -143,6 +145,32 @@ static volatile bool     g_touch_pressed = false;
 static volatile uint16_t g_touch_x       = 0;
 static volatile uint16_t g_touch_y       = 0;
 
+// Touch calibration: affine (driver coords -> logical 640x172). Defaults are this unit's
+// 3-point calibration; touch_set_calibration() overwrites + persists it for any panel.
+static float g_cal[6] = { 0.078f, 0.999f, -54.4f, -0.8906f, 0.01113f, 564.8f };
+
+void touch_get_raw(uint16_t* x, uint16_t* y) {
+    taskENTER_CRITICAL(&g_touch_mux);
+    *x = g_touch_x; *y = g_touch_y;
+    taskEXIT_CRITICAL(&g_touch_mux);
+}
+void touch_set_calibration(const float coef[6]) {
+    for (int i = 0; i < 6; i++) g_cal[i] = coef[i];
+    nvs_handle_t h;
+    if (nvs_open("rsvp", NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_blob(h, "touchcal", g_cal, sizeof g_cal);
+        nvs_commit(h); nvs_close(h);
+    }
+}
+void touch_cal_load(void) {
+    nvs_handle_t h;
+    if (nvs_open("rsvp", NVS_READONLY, &h) == ESP_OK) {
+        size_t sz = sizeof g_cal;
+        nvs_get_blob(h, "touchcal", g_cal, &sz);   // leaves defaults if absent
+        nvs_close(h);
+    }
+}
+
 static void touch_sample_task(void *arg)
 {
     int release_debounce = 0;
@@ -188,9 +216,9 @@ static void TouchInputReadCallback(lv_indev_t * indev, lv_indev_data_t *indevDat
         // Calibrated from corner taps: driver-y = horizontal (20..620), driver-x =
         // inverted vertical (630=top .. 509=bottom). LVGL renders logical (flush rotates
         // the pixels), so it hit-tests in logical coords.
-        // Calibrated affine (driver coords -> logical 640x172) from 3-point calibration.
-        int lx = (78 * (int)x + 999 * (int)y) / 1000 - 54;
-        int ly = (-891 * (int)x + 11 * (int)y) / 1000 + 565;
+        // Calibrated affine (driver coords -> logical 640x172); coefficients from calibration.
+        int lx = (int)(g_cal[0] * x + g_cal[1] * y + g_cal[2]);
+        int ly = (int)(g_cal[3] * x + g_cal[4] * y + g_cal[5]);
         if (lx < 0) lx = 0; else if (lx > 639) lx = 639;
         if (ly < 0) ly = 0; else if (ly > 171) ly = 171;
         // LVGL rotates the fed (native 172x640) point to logical as hit=(640-fed_y, fed_x),
