@@ -11,6 +11,7 @@
 
 #include "book_loader.hpp"
 #include "power_bsp.h"
+#include "app_settings.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -26,6 +27,16 @@ CompiledIndex g_index;
 Player*     g_player  = nullptr;
 int         g_wpm     = 300;
 std::size_t g_lastIdx = static_cast<std::size_t>(-1);
+
+// Book-open state: the boot path loads the first SD book; the library opens a path.
+std::string g_pending_path;
+bool        g_use_first = true;
+std::string g_book_path;          // currently-open book (for .pos resume/save)
+lv_timer_t* g_tick_timer = nullptr;
+
+static const lv_font_t* font_for(FontSize f) {
+    (void)f; return &lv_font_montserrat_48;   // Task 9 maps S/M/L -> 36/48/64
+}
 
 lv_obj_t *g_scr      = nullptr;
 lv_obj_t *g_pre      = nullptr;
@@ -124,6 +135,8 @@ void set_wpm(int w)
     if (w < 100) w = 100;
     if (w > 800) w = 800;
     g_wpm = w;
+    settings().wpm = g_wpm;          // persist the speed (swipe up/down saves too)
+    settings_save();
     PacingConfig cfg = g_player->config();
     cfg.wpm = g_wpm;
     g_player->setConfig(cfg);
@@ -164,7 +177,11 @@ void touch_event_cb(lv_event_t *e)
     const Gesture g = classifyGesture(dx, dy, 25);
 
     switch (g) {
-        case Gesture::Tap:        g_player->togglePlay(); update_status(); break;
+        case Gesture::Tap:
+            g_player->togglePlay();
+            update_status();
+            if (!g_player->isPlaying()) rsvp_reader_save_position();
+            break;
         case Gesture::SwipeUp:    set_wpm(g_wpm + 25); break;   // up = faster
         case Gesture::SwipeDown:  set_wpm(g_wpm - 25); break;
         // Touch X is screen-mirrored vs. the held device (see firmware-notes), so a
@@ -203,7 +220,13 @@ lv_obj_t *make_label(lv_obj_t *parent, lv_color_t color, const lv_font_t *font)
 // Build the reader screen from the already-loaded g_index (populated by load_task).
 static void build_reader(const std::string& book_title)
 {
+    // Tear down any previous reader (re-entrant: opening another book rebuilds this).
+    if (g_tick_timer) { lv_timer_del(g_tick_timer); g_tick_timer = nullptr; }
+    if (g_player)     { delete g_player; g_player = nullptr; }
     g_scr = lv_screen_active();
+    lv_obj_clean(g_scr);            // remove the loading overlay / any previous reader objects
+    g_loading_scr = nullptr;        // (was a child of g_scr, now deleted)
+    g_wpm = settings().wpm;         // apply the persisted reading speed
     lv_obj_set_style_bg_color(g_scr, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(g_scr, LV_OPA_COVER, 0);
 
@@ -228,17 +251,26 @@ static void build_reader(const std::string& book_title)
     lv_obj_align(g_prev, LV_ALIGN_LEFT_MID, 18, 0);
     g_next = make_label(g_scr, faint, &lv_font_montserrat_16);
     lv_obj_align(g_next, LV_ALIGN_RIGHT_MID, -18, 0);
+    if (!settings().show_flankers) {
+        lv_obj_add_flag(g_prev, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(g_next, LV_OBJ_FLAG_HIDDEN);
+    }
 
     // the word: pre + ORP(red) + post, ORP pinned to screen centre
-    g_pre  = make_label(g_scr, white, &lv_font_montserrat_48);
-    g_orp  = make_label(g_scr, red,   &lv_font_montserrat_48);
-    g_post = make_label(g_scr, white, &lv_font_montserrat_48);
+    const lv_font_t* word_font = font_for(settings().font);
+    g_pre  = make_label(g_scr, white, word_font);
+    g_orp  = make_label(g_scr, red,   word_font);
+    g_post = make_label(g_scr, white, word_font);
 
     // focal ticks
     static lv_style_t tick;
-    lv_style_init(&tick);
-    lv_style_set_bg_color(&tick, lv_color_hex(0xcdd6e6));
-    lv_style_set_bg_opa(&tick, LV_OPA_40);
+    static bool tick_inited = false;
+    if (!tick_inited) {
+        lv_style_init(&tick);
+        lv_style_set_bg_color(&tick, lv_color_hex(0xcdd6e6));
+        lv_style_set_bg_opa(&tick, LV_OPA_40);
+        tick_inited = true;
+    }
 
     g_tick_top = lv_obj_create(g_scr);
     lv_obj_remove_style_all(g_tick_top);
@@ -254,15 +286,20 @@ static void build_reader(const std::string& book_title)
     g_wpm_lbl = make_label(g_scr, dim, &lv_font_montserrat_16);
     lv_obj_align(g_wpm_lbl, LV_ALIGN_BOTTOM_MID, 0, -6);
 
-    // --- engine: drive the Player over the loaded document ---
+    // --- engine: drive a fresh Player over the loaded document ---
     PacingConfig cfg;
     cfg.wpm = g_wpm;
-    static Player player(g_index, cfg);
-    g_player = &player;
+    g_player = new Player(g_index, cfg);
+    g_book_path = g_pending_path;
+    if (settings().resume_on_open) {
+        const std::uint32_t p = load_position(g_book_path);
+        if (p < g_index.wordCount()) g_player->seek(p);
+    }
+    g_lastIdx = static_cast<std::size_t>(-1);
     g_player->play();
 
     refresh_word();
-    lv_timer_create(tick_cb, 33, nullptr);
+    g_tick_timer = lv_timer_create(tick_cb, 33, nullptr);
 
     // transparent full-screen touch layer on top: tap / swipe via press-release delta
     lv_obj_t *touch = lv_obj_create(g_scr);
@@ -280,18 +317,11 @@ namespace {
 // publishes completion via g_load_done.
 void load_task(void*)
 {
-    if (auto book = load_first_book()) {
+    std::optional<LoadedBook> book = g_use_first ? load_first_book() : load_book(g_pending_path);
+    if (!book) book = load_book("");          // sample fallback (never null)
+    if (book) {
         g_index        = std::move(book->index);
         g_loaded_title = book->title;
-    } else {
-        IndexBuilder ib(DocMeta{});
-        tokenizePlainTextInto(
-            "Rapid serial visual presentation shows one word at a time. "
-            "Your eyes stay still while the words flow past you. "
-            "This little reader is now alive on the hardware!",
-            [&](const std::string& w, std::uint8_t f){ ib.addToken(w, f); });
-        g_index        = CompiledIndex::parse(ib.finish());
-        g_loaded_title = "Sample";
     }
     g_load_done.store(true);
     vTaskDelete(nullptr);
@@ -337,4 +367,51 @@ extern "C" void rsvp_build_reader_screen(void)
 {
     if (g_loading_scr) { lv_obj_del(g_loading_scr); g_loading_scr = nullptr; }
     build_reader(g_loaded_title);
+}
+
+namespace {
+// Polls the background load; once done, builds the reader and self-deletes.
+void open_done_timer_cb(lv_timer_t* t)
+{
+    if (!g_load_done.load()) return;
+    build_reader(g_loaded_title);
+    lv_timer_del(t);
+}
+} // namespace
+
+extern "C" void rsvp_open_book_path(const char* path)
+{
+    rsvp_reader_save_position();          // save the outgoing book first
+    if (g_tick_timer) { lv_timer_del(g_tick_timer); g_tick_timer = nullptr; }
+    if (g_player)     { delete g_player; g_player = nullptr; }   // stop before g_index is replaced
+
+    g_pending_path = path ? path : "";
+    g_use_first = false;
+    g_load_done.store(false);
+
+    g_loading_scr = lv_obj_create(lv_screen_active());
+    lv_obj_remove_style_all(g_loading_scr);
+    lv_obj_set_size(g_loading_scr, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_color(g_loading_scr, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(g_loading_scr, LV_OPA_COVER, 0);
+    lv_obj_t* lbl = lv_label_create(g_loading_scr);
+    lv_obj_set_style_text_color(lbl, lv_color_hex(0xf2f5fa), 0);
+    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_48, 0);
+    lv_label_set_text(lbl, "Loading...");
+    lv_obj_center(lbl);
+
+    if (xTaskCreatePinnedToCore(load_task, "bookload", 48 * 1024, nullptr, 3, nullptr, 1) != pdPASS)
+        ESP_LOGE("ui", "failed to create book-load task");
+    lv_timer_create(open_done_timer_cb, 50, nullptr);
+}
+
+extern "C" void rsvp_reader_save_position(void)
+{
+    if (g_player && g_index.wordCount() > 0 && !g_book_path.empty())
+        save_position(g_book_path, static_cast<std::uint32_t>(g_player->index()));
+}
+
+extern "C" void rsvp_reader_pause(void)
+{
+    if (g_player && g_player->isPlaying()) { g_player->togglePlay(); update_status(); }
 }

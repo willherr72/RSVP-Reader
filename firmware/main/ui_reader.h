@@ -18,6 +18,16 @@ bool rsvp_book_ready(void);
 // main task under the LVGL lock once rsvp_book_ready() returns true.
 void rsvp_build_reader_screen(void);
 
+// Open a specific book by path ("" = sample): loading screen -> background load -> reader,
+// resuming from .pos when enabled. Call from the LVGL thread.
+void rsvp_open_book_path(const char* path);
+
+// Persist the open book's current word index to its .pos (pause / leaving to the menu).
+void rsvp_reader_save_position(void);
+
+// Pause the reader if it's playing (e.g. when the menu opens).
+void rsvp_reader_pause(void);
+
 #ifdef __cplusplus
 }
 #endif
