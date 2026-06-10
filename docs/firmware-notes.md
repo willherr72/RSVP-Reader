@@ -132,7 +132,12 @@
   existing touch calibration **follows the flip for free** — LVGL rotates indev input by the
   display rotation. Decision is host-tested in `core/orient`; **Auto-rotate** Settings toggle
   (NVS) locks it.
+- ✅ **Real battery % (Phase 3, dated 2026-06-10)**: battery sensed on **GPIO4 = ADC1 ch3**
+  (`battery_bsp`, `esp_adc` oneshot, **12 dB**, 12-bit, **curve-fitting calibration**), with a
+  **÷3 divider** so `battery_mV = calibrated_mV × 3` (16-sample average). `core/battery`
+  maps mV→% via a piecewise LiPo curve (host-tested); shown left of the clock, refreshed on
+  the clock timer. It's a divider, not a fuel gauge — ~1–2% sag under load is expected. (Pin
+  + divider confirmed against the Waveshare schematic and `01_ADC_Test` demo.)
 
 ## Next features (see docs/superpowers/specs/ + plans/)
-**WiFi Drop** (AP + web upload of EPUB/TXT to the SD), then real battery (%/ADC),
-estimated-time-to-finish.
+**WiFi Drop** (AP + web upload of EPUB/TXT to the SD), then estimated-time-to-finish.
