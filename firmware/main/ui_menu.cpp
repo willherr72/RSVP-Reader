@@ -8,6 +8,7 @@
 #include "rtc_bsp.hpp"
 #include "imu_bsp.hpp"
 #include "autorotate.h"
+#include "battery_bsp.h"
 
 #include "lvgl.h"
 #include "esp_log.h"
@@ -490,6 +491,7 @@ extern "C" void ui_menu_init(void) {
     touch_cal_load();                 // load persisted touch calibration
     rtc_init();
     imu_init();
+    batt_init();
     autorotate_start();
     setUpduty((uint16_t)((5 - settings().brightness) * 40));   // apply saved brightness (duty is inverted)
     power_bsp_set_boot_cb(on_boot);
