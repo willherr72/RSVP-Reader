@@ -23,6 +23,7 @@
 #include "sdcard_bsp.h"
 #include "power_bsp.h"
 #include "ui_reader.h"
+#include "ui_menu.h"
 
 
 static const char *TAG = "example";
@@ -40,7 +41,7 @@ static uint16_t *trans_buf_1;
 #define LVGL_TICK_PERIOD_MS    5
 #define LVGL_TASK_MAX_DELAY_MS 500
 #define LVGL_TASK_MIN_DELAY_MS 10
-#define LVGL_TASK_STACK_SIZE   (8 * 1024)
+#define LVGL_TASK_STACK_SIZE   (16 * 1024)   // screens (menu/library/settings/reader) build on the LVGL thread
 #define LVGL_TASK_PRIORITY     2
 
 
@@ -366,6 +367,7 @@ void app_main(void)
     if (example_lvgl_lock(-1))
     {
         rsvp_build_reader_screen();
+        ui_menu_init();                 /* BOOT button opens the menu over the reader */
         example_lvgl_unlock();
     }
 }
