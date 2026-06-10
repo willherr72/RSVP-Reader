@@ -44,7 +44,7 @@ Let the user air-drop EPUB/TXT files onto the SD card (and delete books) over Wi
 
 ## 3. Web page (served from flash)
 
-A single self-contained page (no external assets): a file `<input>` + Upload button that does `fetch('/upload?name='+encodeURIComponent(file.name), {method:'POST', body:file})`; on success it re-fetches `/list` and renders each book with a Delete button calling `fetch('/delete?name='+encodeURIComponent(n), {method:'POST'})`. Raw body + name-in-query means **no multipart parsing** in firmware. Minimal inline CSS; status text for upload success/failure.
+A single self-contained page (no external assets). Upload uses **`XMLHttpRequest`** (`POST /upload?name='+encodeURIComponent(file.name)`, body = the raw file) with an `xhr.upload.onprogress` handler driving a **progress bar** (`loaded/total` → a `<progress>` element + percent text), so large EPUBs show progress while sending. On completion it re-fetches `/list` and renders each book with a Delete button calling `fetch('/delete?name='+encodeURIComponent(n), {method:'POST'})`. Raw body + name-in-query means **no multipart parsing** in firmware (and the progress bar is entirely browser-side — no firmware change). Minimal inline CSS; status text for success/failure.
 
 ## 4. Data flow
 
@@ -61,4 +61,4 @@ Open screen → `wifi_drop_start` (AP + server) → screen shows credentials. Ph
 ## 6. Testing
 
 - **Host (TDD):** `sanitizeUploadName` — `"foo.epub"→"foo.epub"`, `"../../etc/foo.epub"→"foo.epub"`, `"sub/book.txt"→"book.txt"`, `"foo.EPUB"→"foo.EPUB"`, and `""`/`".hidden.epub"`/`"foo.pdf"`/`"/etc/passwd"`→`""`.
-- **On-device:** open WiFi Drop → screen shows SSID/pass/URL; connect a phone → page loads + lists books; upload an `.epub` → 200, file on `/sdcard`, shows in Library after closing; delete a book → gone from the list and Library; closing the screen stops the AP (phone drops); the touchscreen/menu still work afterward.
+- **On-device:** open WiFi Drop → screen shows SSID/pass/URL; connect a phone → page loads + lists books; upload an `.epub` → the **progress bar advances**, 200, file on `/sdcard`, shows in Library after closing; delete a book → gone from the list and Library; closing the screen stops the AP (phone drops); the touchscreen/menu still work afterward.
