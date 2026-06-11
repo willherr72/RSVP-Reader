@@ -59,7 +59,7 @@ void show_wifi() {
     g_overlay = make_overlay();
     wifi_drop_info_t info;
     wifi_drop_start(&info);
-    char buf[200];
+    char buf[256];
     if (info.ok) {
         std::snprintf(buf, sizeof buf,
             "WiFi Drop\n\nNetwork:  %s\nPassword: %s\nOpen:  %s\n\n"
