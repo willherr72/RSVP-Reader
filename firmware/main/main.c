@@ -30,9 +30,8 @@
 
 static const char *TAG = "example";
 
-static SemaphoreHandle_t lvgl_mux = NULL;   
-static SemaphoreHandle_t flush_done_semaphore = NULL; 
-uint8_t *lvgl_dest = NULL;
+static SemaphoreHandle_t lvgl_mux = NULL;
+static SemaphoreHandle_t flush_done_semaphore = NULL;
 
 static uint16_t *trans_buf_1;
 
@@ -66,51 +65,54 @@ static bool example_notify_lvgl_flush_ready(esp_lcd_panel_io_handle_t panel_io, 
 static void example_lvgl_flush_cb(lv_display_t * disp, const lv_area_t * area, uint8_t * color_p)
 {
     esp_lcd_panel_handle_t panel_handle = (esp_lcd_panel_handle_t)lv_display_get_user_data(disp);
-    lv_draw_sw_rgb565_swap(color_p, lv_area_get_width(area) * lv_area_get_height(area));
 #if (Rotated == USER_DISP_ROT_90)
+    // Fused rotate + byte-swap + chunk fill. The old path did three full-frame passes
+    // (rgb565_swap in PSRAM, lv_draw_sw_rotate PSRAM->PSRAM ~66ms/frame from the strided
+    // writes, then memcpy to the DMA buffer). Here each native 64-row chunk is filled
+    // straight from the logical render buffer: PSRAM is read sequentially (per logical
+    // row), the transposed writes land in internal RAM where scatter is cheap, and the
+    // byte swap rides along. Pixel mappings match LVGL's rotate90/270_rgb565:
+    //   ROTATION_90:  native(ny,nx) = logical(lx = 639-ny, ly = nx)
+    //   ROTATION_270: native(ny,nx) = logical(lx = ny,     ly = 171-nx)
     lv_display_rotation_t rotation = lv_display_get_rotation(disp);
-    lv_area_t rotated_area;
-    if(rotation != LV_DISPLAY_ROTATION_0)
-    {
-        lv_color_format_t cf = lv_display_get_color_format(disp);
-        /*Calculate the position of the rotated area*/
-        rotated_area = *area;
-        lv_display_rotate_area(disp, &rotated_area);
-        /*Calculate the source stride (bytes in a line) from the width of the area*/
-        uint32_t src_stride = lv_draw_buf_width_to_stride(lv_area_get_width(area), cf);
-        /*Calculate the stride of the destination (rotated) area too*/
-        uint32_t dest_stride = lv_draw_buf_width_to_stride(lv_area_get_width(&rotated_area), cf);
-        /*Have a buffer to store the rotated area and perform the rotation*/
-        
-        int32_t src_w = lv_area_get_width(area);
-        int32_t src_h = lv_area_get_height(area);
-        lv_draw_sw_rotate(color_p, lvgl_dest, src_w, src_h, src_stride, dest_stride, rotation, cf);
-        /*Use the rotated area and rotated buffer from now on*/
-        area = &rotated_area;
-    }
 
-    const int flush_coun = (LVGL_SPIRAM_BUFF_LEN / LVGL_DMA_BUFF_LEN);
-    const int offgap = (EXAMPLE_LCD_V_RES / flush_coun);
-    const int dmalen = (LVGL_DMA_BUFF_LEN / 2);
-    int offsetx1 = 0;
+    const int flush_coun = (LVGL_SPIRAM_BUFF_LEN / LVGL_DMA_BUFF_LEN);   // 10 chunks
+    const int offgap = (EXAMPLE_LCD_V_RES / flush_coun);                 // 64 native rows
+    const uint16_t *srcbuf = (const uint16_t *)color_p;                  // logical 640x172
     int offsety1 = 0;
-    int offsetx2 = EXAMPLE_LCD_H_RES;
-    int offsety2 = offgap;
 
-    uint16_t *map = (uint16_t *)lvgl_dest;
     xSemaphoreGive(flush_done_semaphore);
     for(int i = 0; i<flush_coun; i++)
     {
         xSemaphoreTake(flush_done_semaphore,portMAX_DELAY);
-        memcpy(trans_buf_1,map,LVGL_DMA_BUFF_LEN);
-        esp_lcd_panel_draw_bitmap(panel_handle, offsetx1, offsety1, offsetx2, offsety2, trans_buf_1);
+        if (rotation == LV_DISPLAY_ROTATION_270) {
+            for (int ly = 0; ly < EXAMPLE_LCD_H_RES; ly++) {
+                const uint16_t *s = srcbuf + ly * EXAMPLE_LCD_V_RES + offsety1;
+                uint16_t *d = trans_buf_1 + (EXAMPLE_LCD_H_RES - 1 - ly);
+                for (int k = 0; k < offgap; k++) {
+                    *d = __builtin_bswap16(*s++);
+                    d += EXAMPLE_LCD_H_RES;
+                }
+            }
+        } else {  // ROTATION_90 (the boot default; 0/180 are never set)
+            for (int ly = 0; ly < EXAMPLE_LCD_H_RES; ly++) {
+                const uint16_t *s = srcbuf + ly * EXAMPLE_LCD_V_RES
+                                  + (EXAMPLE_LCD_V_RES - offsety1 - offgap);
+                uint16_t *d = trans_buf_1 + (offgap - 1) * EXAMPLE_LCD_H_RES + ly;
+                for (int k = 0; k < offgap; k++) {
+                    *d = __builtin_bswap16(*s++);
+                    d -= EXAMPLE_LCD_H_RES;
+                }
+            }
+        }
+        esp_lcd_panel_draw_bitmap(panel_handle, 0, offsety1, EXAMPLE_LCD_H_RES,
+                                  offsety1 + offgap, trans_buf_1);
         offsety1 += offgap;
-        offsety2 += offgap;
-        map += dmalen;
     }
     xSemaphoreTake(flush_done_semaphore,portMAX_DELAY);
     lv_disp_flush_ready(disp);
 #else
+    lv_draw_sw_rgb565_swap(color_p, lv_area_get_width(area) * lv_area_get_height(area));
     const int flush_coun = (LVGL_SPIRAM_BUFF_LEN / LVGL_DMA_BUFF_LEN);
     const int offgap = (EXAMPLE_LCD_V_RES / flush_coun);
     const int dmalen = (LVGL_DMA_BUFF_LEN / 2);
@@ -356,7 +358,7 @@ void app_main(void)
     lv_display_set_buffers(disp, buffer_1, buffer_2, BUFF_SIZE, LV_DISPLAY_RENDER_MODE_FULL);
     lv_display_set_user_data(disp, panel);
 #if (Rotated == USER_DISP_ROT_90)
-    lvgl_dest = (uint8_t *)heap_caps_malloc(BUFF_SIZE, MALLOC_CAP_SPIRAM); //旋转buf
+    // No separate rotation buffer: the flush rotates straight into the DMA chunk buffer.
     lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_90);
 #endif
 
