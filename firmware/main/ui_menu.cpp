@@ -9,6 +9,7 @@
 #include "imu_bsp.hpp"
 #include "autorotate.h"
 #include "battery_bsp.h"
+#include "wifi_drop.h"
 
 #include "lvgl.h"
 #include "esp_log.h"
@@ -53,16 +54,29 @@ void show_menu();
 void show_library();
 void show_settings();
 
+void show_wifi() {
+    g_screen = SCR_WIFI;
+    g_overlay = make_overlay();
+    wifi_drop_info_t info;
+    wifi_drop_start(&info);
+    char buf[200];
+    if (info.ok) {
+        std::snprintf(buf, sizeof buf,
+            "WiFi Drop\n\nNetwork:  %s\nPassword: %s\nOpen:  %s\n\n"
+            "Connect a phone, open the page.\nPress BOOT when done.",
+            info.ssid, info.pass, info.url);
+    } else {
+        std::snprintf(buf, sizeof buf, "WiFi Drop\n\nWiFi failed to start.\nPress BOOT to go back.");
+    }
+    centered_label(g_overlay, buf);
+}
+
 void tile_cb(lv_event_t* e) {
     Screen which = (Screen)(intptr_t)lv_event_get_user_data(e);
     close_overlay();
     if (which == SCR_LIBRARY)       show_library();
     else if (which == SCR_SETTINGS) show_settings();
-    else {
-        g_screen = SCR_WIFI;
-        g_overlay = make_overlay();
-        centered_label(g_overlay, "WiFi Drop\n(coming soon)");
-    }
+    else show_wifi();
 }
 
 void show_menu() {
@@ -473,9 +487,13 @@ void nav_timer_cb(lv_timer_t*) {
         case SCR_MENU:
             if (g_book_open) { close_overlay(); g_screen = SCR_READER; }
             break;
+        case SCR_WIFI:
+            wifi_drop_stop();
+            close_overlay();
+            show_menu();
+            break;
         case SCR_LIBRARY:
         case SCR_SETTINGS:
-        case SCR_WIFI:
         case SCR_CALIB:
         case SCR_SETCLOCK:
             close_overlay();
