@@ -63,10 +63,10 @@ void show_wifi() {
     if (info.ok) {
         std::snprintf(buf, sizeof buf,
             "WiFi Drop\n\nNetwork:  %s\nPassword: %s\nOpen:  %s\n\n"
-            "Connect a phone, open the page.\nPress BOOT when done.",
+            "Connect a phone, open the page.\nPress the Menu button when done.",
             info.ssid, info.pass, info.url);
     } else {
-        std::snprintf(buf, sizeof buf, "WiFi Drop\n\nWiFi failed to start.\nPress BOOT to go back.");
+        std::snprintf(buf, sizeof buf, "WiFi Drop\n\nWiFi failed to start.\nPress the Menu button to go back.");
     }
     centered_label(g_overlay, buf);
 }
