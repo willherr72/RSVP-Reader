@@ -144,5 +144,32 @@
   and settings-apply), so it counts down and reacts to speed changes live. **Show ETA**
   Settings toggle (NVS). No RTC — pure arithmetic.
 
+- ✅ **WiFi Drop (Phase 3, dated 2026-06-11)**: the WiFi Drop screen starts a **WPA2 AP**
+  (`RSVP-Reader` / `rsvpdrop8`, `http://192.168.4.1`) + `esp_http_server` hosting an
+  upload/delete page; Menu button stops both. Raw-body uploads (`POST /upload?name=`)
+  stream to `/sdcard` — no multipart; the page's progress bar is browser-side XHR. Name
+  safety in host-tested `core/uploadname` (`forCreate` transliterates, deletes match
+  verbatim). Hard-won lessons:
+  - **Android routes around an internet-less AP** until "stay connected?" is accepted —
+    looks like a dead server, isn't.
+  - **httpd needs `lru_purge_enable`**: a reconnecting phone's stale sockets exhaust the
+    pool and the page hangs for minutes.
+  - **WiFi + SDMMC fight over internal DMA RAM**: linking WiFi left no contiguous 48KB,
+    so the boot-time book-load task silently failed (nothing loaded!) → its stack now
+    lives in **PSRAM** (`xTaskCreatePinnedToCoreWithCaps`). SD `fwrite` can still
+    transiently EIO under a WiFi burst → brief retry in the upload loop. Do NOT shrink
+    the WiFi RX/TX buffer config — that broke `esp_wifi_start` outright.
+  - **Non-ASCII filenames don't round-trip FatFs** (smart quote → unopenable file);
+    uploads transliterate to ASCII. FAT-invalid chars (`: * ?` — common in titles) → `_`.
+  - **Book size cap**: whole-file compile = raw + working set in 8MB PSRAM; cap is 7MB
+    with an up-front free-PSRAM check that falls back gracefully (no `-fno-exceptions`
+    abort). A 6.6MB image-heavy EPUB exceeded it — stripped images on the PC (231KB) and
+    it reads fine. **Streaming compile** is the real fix (future).
+  - `test/host` builds **`rsvp_compile`** — runs an EPUB through the real pipeline on the
+    PC; instantly separates "bad file" from "device limit".
+  - Power-off regression: the PWR shutdown callback was registered only by the dead
+    loading-screen boot path; now in `rsvp_reader_init`.
+
 ## Next features (see docs/superpowers/specs/ + plans/)
-**WiFi Drop** (AP + web upload of EPUB/TXT to the SD) — the last big one on the roadmap.
+The roadmap's big items are done. Known future work: **streaming EPUB compile** (image-heavy
+books > ~5MB), scroll-lag investigation (software rotation), orphaned `.rsvp` cache cleanup.
