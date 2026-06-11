@@ -22,6 +22,7 @@ idf_component_register(
         "src/orient.cpp"
         "src/battery.cpp"
         "src/eta.cpp"
+        "src/uploadname.cpp"
     INCLUDE_DIRS "include"
     REQUIRES miniz)
 

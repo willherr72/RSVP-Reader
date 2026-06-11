@@ -30,6 +30,7 @@ add_executable(rsvp_tests
     test_orient.cpp
     test_battery.cpp
     test_eta.cpp
+    test_uploadname.cpp
     ${CORE_DIR}/src/orp.cpp
     ${CORE_DIR}/src/gesture.cpp
     ${CORE_DIR}/src/cachepath.cpp
@@ -47,6 +48,7 @@ add_executable(rsvp_tests
     ${CORE_DIR}/src/orient.cpp
     ${CORE_DIR}/src/battery.cpp
     ${CORE_DIR}/src/eta.cpp
+    ${CORE_DIR}/src/uploadname.cpp
     ${MINIZ_DIR}/miniz.c
 )
 target_include_directories(rsvp_tests PRIVATE
