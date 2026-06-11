@@ -7,6 +7,7 @@
 #include "rsvp/tokenize.hpp"
 
 #include "esp_log.h"
+#include "esp_heap_caps.h"
 #include <dirent.h>
 #include <sys/stat.h>
 #include <cctype>
@@ -16,9 +17,10 @@
 
 static const char *TAG = "book_loader";
 // Source-file cap. Large std::vector allocations (>16KB) land in PSRAM automatically
-// (CONFIG_SPIRAM_USE_MALLOC=y, ALWAYSINTERNAL=16384); 4MB leaves PSRAM headroom for the
-// decompressed text, the compiled index, and LVGL's framebuffers.
-static constexpr std::size_t kMaxBookBytes = 4u * 1024 * 1024;
+// (CONFIG_SPIRAM_USE_MALLOC=y, ALWAYSINTERNAL=16384). 7MB is the ceiling for the 8MB
+// PSRAM; read_file() additionally checks the actual free PSRAM before committing, so an
+// over-budget book falls back gracefully instead of aborting (-fno-exceptions) mid-alloc.
+static constexpr std::size_t kMaxBookBytes = 7u * 1024 * 1024;
 
 namespace {
 
@@ -50,6 +52,14 @@ std::string find_first_book() {
 bool read_file(const std::string& path, std::vector<std::uint8_t>& out) {
     struct stat st;
     if (stat(path.c_str(), &st) != 0 || (std::size_t)st.st_size > kMaxBookBytes) return false;
+    // The compile holds the raw bytes (contiguous) plus a decompress + index working set in
+    // PSRAM. Verify the budget up front: with -fno-exceptions a failed vector alloc aborts.
+    const std::size_t need = (std::size_t)st.st_size;
+    if (heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM) < need ||
+        heap_caps_get_free_size(MALLOC_CAP_SPIRAM) < need + (2u << 20)) {
+        ESP_LOGW(TAG, "book too large for free PSRAM (%u bytes)", (unsigned)need);
+        return false;
+    }
     FILE* f = fopen(path.c_str(), "rb");
     if (!f) return false;
     out.resize(st.st_size);

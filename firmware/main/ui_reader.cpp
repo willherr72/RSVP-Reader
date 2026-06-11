@@ -20,6 +20,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include <cstdio>
 #include <atomic>
@@ -400,9 +401,6 @@ extern "C" void rsvp_loading_screen_create(void)
     lv_label_set_text(lbl, "Loading...");
     lv_obj_center(lbl);
 
-    power_bsp_set_shutdown_cb(on_shutdown_requested);
-    lv_timer_create(shutdown_timer_cb, 100, nullptr);
-
     // The inflate path uses a ~32KB tinfl_decompressor on the stack, so the load task
     // needs a big stack (48KB fits the largest free internal block at this point).
     if (xTaskCreatePinnedToCore(load_task, "bookload", 48 * 1024, nullptr, 3, nullptr, 1) != pdPASS)
@@ -457,12 +455,20 @@ extern "C" void rsvp_open_book_path(const char* path)
     lv_timer_create(open_done_timer_cb, 50, nullptr);
 }
 
-// Create the persistent book-load task once, at boot, while internal RAM is still free.
+// Create the persistent book-load task once at boot. Its 48KB stack lives in PSRAM: the
+// inflate path needs a big stack, and internal RAM no longer has a contiguous 48KB block
+// once the WiFi stack is linked. The task does only SD + CPU work (never flash writes), so
+// a PSRAM stack is safe; this also frees 48KB internal for SD-write DMA during uploads.
 extern "C" void rsvp_reader_init(void)
 {
-    if (xTaskCreatePinnedToCore(load_task, "bookload", 48 * 1024, nullptr, 3, nullptr, 1) != pdPASS)
+    if (xTaskCreatePinnedToCoreWithCaps(load_task, "bookload", 48 * 1024, nullptr, 3, nullptr, 1,
+                                        MALLOC_CAP_SPIRAM) != pdPASS)
         ESP_LOGE("ui", "failed to create book-load task");
     lv_timer_create(clock_timer_cb, 20000, nullptr);   // refresh the clock every 20s
+    // PWR long-press -> power off, from any screen. (Used to be registered by the old
+    // loading-screen boot path, which the menu-first boot no longer calls.)
+    power_bsp_set_shutdown_cb(on_shutdown_requested);
+    lv_timer_create(shutdown_timer_cb, 100, nullptr);
 }
 
 extern "C" void rsvp_reader_save_position(void)
