@@ -169,7 +169,18 @@
     PC; instantly separates "bad file" from "device limit".
   - Power-off regression: the PWR shutdown callback was registered only by the dead
     loading-screen boot path; now in `rsvp_reader_init`.
+  - The page was later redesigned (2026-06-11, visual-companion approved): dark slate,
+    red dashed tap/drag drop zone, named progress %, red delete chips.
+- ✅ **Scroll smoothness (2026-06-11)**: measured per-stage flush timing while scrolling —
+  the **`lv_draw_sw_rotate` PSRAM→PSRAM pass cost 66.5ms/frame** (strided writes = a cache
+  miss per 2-byte store; swap 6.9ms + push 20ms on top → 93ms/frame ≈ 10 FPS). The flush
+  now **fuses rotate + byte-swap + chunking**: each native 64-row DMA chunk is filled
+  straight from the logical render buffer (sequential PSRAM reads, transposed scatter
+  into internal RAM, bswap inline) → **26ms/frame** (~11ms of that is the 40MHz QSPI
+  floor). Pixel mappings cross-checked against LVGL's `rotate90/270_rgb565`; both
+  auto-rotate orientations verified. Remaining headroom if ever needed: QSPI 40→80MHz,
+  double-buffered `trans_buf` to overlap fill with DMA, partial render mode.
 
 ## Next features (see docs/superpowers/specs/ + plans/)
 The roadmap's big items are done. Known future work: **streaming EPUB compile** (image-heavy
-books > ~5MB), scroll-lag investigation (software rotation), orphaned `.rsvp` cache cleanup.
+books > ~5MB), orphaned `.rsvp` cache cleanup.
