@@ -60,3 +60,23 @@ target_include_directories(rsvp_tests PRIVATE
 
 enable_testing()
 add_test(NAME rsvp_tests COMMAND rsvp_tests)
+
+# Command-line EPUB compiler for debugging problem books on the host.
+add_executable(rsvp_compile
+    tool_compile.cpp
+    ${CORE_DIR}/src/orp.cpp
+    ${CORE_DIR}/src/tokenize.cpp
+    ${CORE_DIR}/src/index.cpp
+    ${CORE_DIR}/src/indexbuilder.cpp
+    ${CORE_DIR}/src/entity.cpp
+    ${CORE_DIR}/src/htmltext.cpp
+    ${CORE_DIR}/src/opf.cpp
+    ${CORE_DIR}/src/zipreader.cpp
+    ${CORE_DIR}/src/epub.cpp
+    ${MINIZ_DIR}/miniz.c
+)
+target_include_directories(rsvp_compile PRIVATE
+    ${CORE_DIR}/include
+    ${MINIZ_DIR}
+    ${MINIZ_DIR}/..
+)
